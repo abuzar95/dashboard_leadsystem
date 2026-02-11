@@ -9,9 +9,10 @@ interface Prospect {
   id: string
   name: string | null
   email: string | null
-  number: string | null
+  job_title: string | null
   company_name: string | null
   website_link: string | null
+  linkedin_url: string | null
   category: string | null
   status: string
   sources: string | null
