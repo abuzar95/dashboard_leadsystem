@@ -6,6 +6,8 @@ import Link from 'next/link'
 const navItems = [
   { href: '/', label: 'Prospects', icon: '📋' },
   { href: '/users', label: 'Users & Roles', icon: '👥' },
+  { href: '/skills', label: 'Skills', icon: '🛠️' },
+  { href: '/linkedin-profiles', label: 'LinkedIn Profiles', icon: '💼' },
 ]
 
 export default function Sidebar() {

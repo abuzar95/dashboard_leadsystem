@@ -5,6 +5,32 @@ import axios from 'axios'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api'
 
+const STATUS_STYLE: Record<string, { bg: string; text: string }> = {
+  new:              { bg: '#e3f2fd', text: '#1565c0' },
+  data_refined:     { bg: '#f3e5f5', text: '#7b1fa2' },
+  use_in_campaign:  { bg: '#fff8e1', text: '#f57f17' },
+  pitch:            { bg: '#e8f5e9', text: '#2e7d32' },
+  LNC:              { bg: '#fce4ec', text: '#c62828' },
+  B_LNC:            { bg: '#fbe9e7', text: '#d84315' },
+  LC:               { bg: '#e0f7fa', text: '#00838f' },
+  B_LC:             { bg: '#e0f2f1', text: '#00695c' },
+  COMMUNICATION:    { bg: '#ede7f6', text: '#4527a0' },
+  TRASH:            { bg: '#efebe9', text: '#4e342e' },
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  new:              'New',
+  data_refined:     'Data Refined',
+  use_in_campaign:  'Use in Campaign',
+  pitch:            'Pitch',
+  LNC:              'LNC',
+  B_LNC:            'B-LNC',
+  LC:               'LC',
+  B_LC:             'B-LC',
+  COMMUNICATION:    'Communication',
+  TRASH:            'Trash',
+}
+
 interface Prospect {
   id: string
   name: string | null
@@ -14,6 +40,8 @@ interface Prospect {
   website_link: string | null
   linkedin_url: string | null
   category: string | null
+  intent_category: string | null
+  intent_proof_link: string | null
   status: string
   sources: string | null
   user_id: string
@@ -88,6 +116,8 @@ export default function Home() {
                     <th style={{ padding: '12px', textAlign: 'left' }}>Email</th>
                     <th style={{ padding: '12px', textAlign: 'left' }}>Company</th>
                     <th style={{ padding: '12px', textAlign: 'left' }}>Category</th>
+                    <th style={{ padding: '12px', textAlign: 'left' }}>Intent Category</th>
+                    <th style={{ padding: '12px', textAlign: 'left' }}>Intent Proof</th>
                     <th style={{ padding: '12px', textAlign: 'left' }}>Status</th>
                     <th style={{ padding: '12px', textAlign: 'left' }}>Source</th>
                     <th style={{ padding: '12px', textAlign: 'left' }}>Created</th>
@@ -107,14 +137,39 @@ export default function Home() {
                         ) : '-'}
                       </td>
                       <td style={{ padding: '12px' }}>
+                        {prospect.intent_category ? (
+                          <span style={{
+                            padding: '4px 8px',
+                            borderRadius: '4px',
+                            background: prospect.intent_category === 'Individual' ? '#fff3e0' : prospect.intent_category === 'Business' ? '#e0f2f1' : '#ede7f6',
+                            color: prospect.intent_category === 'Individual' ? '#e65100' : prospect.intent_category === 'Business' ? '#00695c' : '#4527a0',
+                            fontSize: '12px'
+                          }}>
+                            {prospect.intent_category}
+                          </span>
+                        ) : '-'}
+                      </td>
+                      <td style={{ padding: '12px' }}>
+                        {prospect.intent_proof_link ? (
+                          <a
+                            href={prospect.intent_proof_link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ color: '#1976d2', textDecoration: 'underline', fontSize: '13px' }}
+                          >
+                            View Proof
+                          </a>
+                        ) : '-'}
+                      </td>
+                      <td style={{ padding: '12px' }}>
                         <span style={{
                           padding: '4px 8px',
                           borderRadius: '4px',
-                          background: prospect.status === 'new' ? '#e3f2fd' : '#f3e5f5',
-                          color: prospect.status === 'new' ? '#1976d2' : '#7b1fa2',
+                          background: STATUS_STYLE[prospect.status]?.bg || '#f1f5f9',
+                          color: STATUS_STYLE[prospect.status]?.text || '#475569',
                           fontSize: '12px'
                         }}>
-                          {prospect.status}
+                          {STATUS_LABELS[prospect.status] || prospect.status}
                         </span>
                       </td>
                       <td style={{ padding: '12px' }}>

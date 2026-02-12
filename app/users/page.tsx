@@ -5,21 +5,26 @@ import axios from 'axios'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api'
 
-const ROLES = ['DC_R', 'LNCtoLC', 'Pitcher', 'Admin'] as const
+const ROLES = ['admin', 'DC_R', 'LH', 'EM'] as const
 type Role = typeof ROLES[number]
 
 const ROLE_LABELS: Record<Role, string> = {
+  admin: 'Admin',
   DC_R: 'DC&R',
-  LNCtoLC: 'LNCtoLC',
-  Pitcher: 'Pitcher',
-  Admin: 'Admin',
+  LH: 'LH',
+  EM: 'EM',
 }
 
 const ROLE_BADGE: Record<Role, string> = {
+  admin: 'badge-purple',
   DC_R: 'badge-blue',
-  LNCtoLC: 'badge-green',
-  Pitcher: 'badge-orange',
-  Admin: 'badge-purple',
+  LH: 'badge-green',
+  EM: 'badge-orange',
+}
+
+interface LinkedInProfileRef {
+  id: string
+  name: string
 }
 
 interface User {
@@ -27,6 +32,8 @@ interface User {
   email: string
   name: string | null
   role: Role
+  linkedin_profile_id: string | null
+  linkedin_profile: LinkedInProfileRef | null
   created_at: string
 }
 
@@ -34,6 +41,7 @@ export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [linkedinProfiles, setLinkedinProfiles] = useState<LinkedInProfileRef[]>([])
 
   // Modal state
   const [showModal, setShowModal] = useState(false)
@@ -41,6 +49,7 @@ export default function UsersPage() {
   const [formName, setFormName] = useState('')
   const [formEmail, setFormEmail] = useState('')
   const [formRole, setFormRole] = useState<Role>('DC_R')
+  const [formLinkedinProfileId, setFormLinkedinProfileId] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -57,15 +66,26 @@ export default function UsersPage() {
     }
   }, [])
 
+  const fetchLinkedinProfiles = useCallback(async () => {
+    try {
+      const response = await axios.get(`${API_URL}/linkedin-profiles`)
+      setLinkedinProfiles(response.data)
+    } catch {
+      setLinkedinProfiles([])
+    }
+  }, [])
+
   useEffect(() => {
     fetchUsers()
-  }, [fetchUsers])
+    fetchLinkedinProfiles()
+  }, [fetchUsers, fetchLinkedinProfiles])
 
   const openCreateModal = () => {
     setEditingUser(null)
     setFormName('')
     setFormEmail('')
     setFormRole('DC_R')
+    setFormLinkedinProfileId('')
     setFormError(null)
     setShowModal(true)
   }
@@ -75,6 +95,7 @@ export default function UsersPage() {
     setFormName(user.name || '')
     setFormEmail(user.email)
     setFormRole(user.role)
+    setFormLinkedinProfileId(user.linkedin_profile_id || '')
     setFormError(null)
     setShowModal(true)
   }
@@ -84,21 +105,23 @@ export default function UsersPage() {
       setFormError('Email is required')
       return
     }
+    if (formRole === 'LH' && !formLinkedinProfileId) {
+      setFormError('LinkedIn Profile is required for LH role')
+      return
+    }
     setSaving(true)
     setFormError(null)
     try {
+      const payload = {
+        name: formName.trim() || null,
+        email: formEmail.trim(),
+        role: formRole,
+        linkedin_profile_id: formLinkedinProfileId || null,
+      }
       if (editingUser) {
-        await axios.put(`${API_URL}/users/${editingUser.id}`, {
-          name: formName.trim() || null,
-          email: formEmail.trim(),
-          role: formRole,
-        })
+        await axios.put(`${API_URL}/users/${editingUser.id}`, payload)
       } else {
-        await axios.post(`${API_URL}/users`, {
-          name: formName.trim() || null,
-          email: formEmail.trim(),
-          role: formRole,
-        })
+        await axios.post(`${API_URL}/users`, payload)
       }
       setShowModal(false)
       fetchUsers()
@@ -147,6 +170,7 @@ export default function UsersPage() {
                   <th>Name</th>
                   <th>Email</th>
                   <th>Role</th>
+                  <th>LinkedIn Profile</th>
                   <th>Created</th>
                   <th style={{ width: '160px' }}>Actions</th>
                 </tr>
@@ -160,6 +184,9 @@ export default function UsersPage() {
                       <span className={`badge ${ROLE_BADGE[user.role] || 'badge-slate'}`}>
                         {ROLE_LABELS[user.role] || user.role}
                       </span>
+                    </td>
+                    <td style={{ color: '#475569', fontSize: '13px' }}>
+                      {user.linkedin_profile?.name || '—'}
                     </td>
                     <td style={{ color: '#64748b' }}>
                       {new Date(user.created_at).toLocaleDateString()}
@@ -217,7 +244,11 @@ export default function UsersPage() {
               <select
                 className="form-select"
                 value={formRole}
-                onChange={(e) => setFormRole(e.target.value as Role)}
+                onChange={(e) => {
+                  const newRole = e.target.value as Role
+                  setFormRole(newRole)
+                  if (newRole !== 'LH') setFormLinkedinProfileId('')
+                }}
               >
                 {ROLES.map((r) => (
                   <option key={r} value={r}>
@@ -226,6 +257,26 @@ export default function UsersPage() {
                 ))}
               </select>
             </div>
+
+            {formRole === 'LH' && (
+              <div className="form-group">
+                <label className="form-label">
+                  LinkedIn Profile <span style={{ color: '#dc2626' }}>*</span>
+                </label>
+                <select
+                  className="form-select"
+                  value={formLinkedinProfileId}
+                  onChange={(e) => setFormLinkedinProfileId(e.target.value)}
+                >
+                  <option value="">Select LinkedIn profile</option>
+                  {linkedinProfiles.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {formError && (
               <p style={{ color: '#dc2626', fontSize: '13px', marginBottom: '12px' }}>{formError}</p>
