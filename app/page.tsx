@@ -236,7 +236,7 @@ export default function Home() {
                       <XAxis dataKey="name" tick={{ fontSize: 12 }} />
                       <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
                       <Tooltip
-                        formatter={(value: number) => [`${value} prospects`, 'Count']}
+                        formatter={(value: number | undefined) => [`${value ?? 0} prospects`, 'Count']}
                         contentStyle={{ borderRadius: '6px', border: '1px solid #e2e8f0' }}
                       />
                       <Bar dataKey="count" radius={[4, 4, 0, 0]}>
