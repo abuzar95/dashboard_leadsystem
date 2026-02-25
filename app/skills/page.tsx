@@ -1,9 +1,8 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
-import axios from 'axios'
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api'
+import { useEffect, useState, useCallback, useMemo } from 'react'
+import api from '../lib/api'
+import TablePagination from '../components/TablePagination'
 
 interface Skill {
   id: string
@@ -23,11 +22,22 @@ export default function SkillsPage() {
   const [formName, setFormName] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [page, setPage] = useState(1)
+  const [rowsPerPage, setRowsPerPage] = useState(10)
+
+  const paginatedSkills = useMemo(() => {
+    const start = (page - 1) * rowsPerPage
+    return skills.slice(start, start + rowsPerPage)
+  }, [skills, page, rowsPerPage])
+
+  useEffect(() => {
+    setPage(1)
+  }, [skills.length, rowsPerPage])
 
   const fetchSkills = useCallback(async () => {
     try {
       setLoading(true)
-      const response = await axios.get(`${API_URL}/skills`)
+      const response = await api.get('/skills')
       setSkills(response.data)
       setError(null)
     } catch (err: any) {
@@ -64,11 +74,11 @@ export default function SkillsPage() {
     setFormError(null)
     try {
       if (editingSkill) {
-        await axios.put(`${API_URL}/skills/${editingSkill.id}`, {
+        await api.put(`/skills/${editingSkill.id}`, {
           name: formName.trim(),
         })
       } else {
-        await axios.post(`${API_URL}/skills`, {
+        await api.post('/skills', {
           name: formName.trim(),
         })
       }
@@ -84,7 +94,7 @@ export default function SkillsPage() {
   const handleDelete = async (skill: Skill) => {
     if (!confirm(`Are you sure you want to delete "${skill.name}"?`)) return
     try {
-      await axios.delete(`${API_URL}/skills/${skill.id}`)
+      await api.delete(`/skills/${skill.id}`)
       fetchSkills()
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to delete skill')
@@ -113,6 +123,8 @@ export default function SkillsPage() {
               No skills yet. Click &quot;+ New Skill&quot; to create one.
             </p>
           ) : (
+            <>
+            <div className="table-wrapper">
             <table className="data-table">
               <thead>
                 <tr>
@@ -122,7 +134,7 @@ export default function SkillsPage() {
                 </tr>
               </thead>
               <tbody>
-                {skills.map((skill) => (
+                {paginatedSkills.map((skill) => (
                   <tr key={skill.id}>
                     <td style={{ fontWeight: 500 }}>{skill.name}</td>
                     <td style={{ color: '#64748b' }}>
@@ -142,6 +154,15 @@ export default function SkillsPage() {
                 ))}
               </tbody>
             </table>
+            </div>
+            <TablePagination
+              totalItems={skills.length}
+              page={page}
+              onPageChange={setPage}
+              rowsPerPage={rowsPerPage}
+              onRowsPerPageChange={setRowsPerPage}
+            />
+            </>
           )}
         </div>
       )}

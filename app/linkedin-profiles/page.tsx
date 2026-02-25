@@ -1,9 +1,8 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
-import axios from 'axios'
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api'
+import { useEffect, useState, useCallback, useMemo } from 'react'
+import api from '../lib/api'
+import TablePagination from '../components/TablePagination'
 
 const NICHES = ['Individual', 'Business', 'Both'] as const
 type Niche = typeof NICHES[number]
@@ -34,11 +33,22 @@ export default function LinkedInProfilesPage() {
   const [formNiche, setFormNiche] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [page, setPage] = useState(1)
+  const [rowsPerPage, setRowsPerPage] = useState(10)
+
+  const paginatedProfiles = useMemo(() => {
+    const start = (page - 1) * rowsPerPage
+    return profiles.slice(start, start + rowsPerPage)
+  }, [profiles, page, rowsPerPage])
+
+  useEffect(() => {
+    setPage(1)
+  }, [profiles.length, rowsPerPage])
 
   const fetchProfiles = useCallback(async () => {
     try {
       setLoading(true)
-      const response = await axios.get(`${API_URL}/linkedin-profiles`)
+      const response = await api.get('/linkedin-profiles')
       setProfiles(response.data)
       setError(null)
     } catch (err: any) {
@@ -81,9 +91,9 @@ export default function LinkedInProfilesPage() {
         niche: formNiche || null,
       }
       if (editingProfile) {
-        await axios.put(`${API_URL}/linkedin-profiles/${editingProfile.id}`, payload)
+        await api.put(`/linkedin-profiles/${editingProfile.id}`, payload)
       } else {
-        await axios.post(`${API_URL}/linkedin-profiles`, payload)
+        await api.post('/linkedin-profiles', payload)
       }
       setShowModal(false)
       fetchProfiles()
@@ -97,7 +107,7 @@ export default function LinkedInProfilesPage() {
   const handleDelete = async (profile: LinkedInProfile) => {
     if (!confirm(`Are you sure you want to delete "${profile.name}"?`)) return
     try {
-      await axios.delete(`${API_URL}/linkedin-profiles/${profile.id}`)
+      await api.delete(`/linkedin-profiles/${profile.id}`)
       fetchProfiles()
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to delete profile')
@@ -126,6 +136,8 @@ export default function LinkedInProfilesPage() {
               No LinkedIn profiles yet. Click &quot;+ New Profile&quot; to create one.
             </p>
           ) : (
+            <>
+            <div className="table-wrapper">
             <table className="data-table">
               <thead>
                 <tr>
@@ -136,7 +148,7 @@ export default function LinkedInProfilesPage() {
                 </tr>
               </thead>
               <tbody>
-                {profiles.map((profile) => (
+                {paginatedProfiles.map((profile) => (
                   <tr key={profile.id}>
                     <td style={{ fontWeight: 500 }}>{profile.name}</td>
                     <td>
@@ -165,6 +177,15 @@ export default function LinkedInProfilesPage() {
                 ))}
               </tbody>
             </table>
+            </div>
+            <TablePagination
+              totalItems={profiles.length}
+              page={page}
+              onPageChange={setPage}
+              rowsPerPage={rowsPerPage}
+              onRowsPerPageChange={setRowsPerPage}
+            />
+            </>
           )}
         </div>
       )}

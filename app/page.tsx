@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import axios from 'axios'
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api'
+import { useEffect, useState, useMemo } from 'react'
+import api from './lib/api'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
+import TablePagination from './components/TablePagination'
 
 const STATUS_STYLE: Record<string, { bg: string; text: string }> = {
   new:              { bg: '#e3f2fd', text: '#1565c0' },
@@ -45,23 +45,60 @@ interface Prospect {
   status: string
   sources: string | null
   user_id: string
+  lh_user_id: string | null
   created_at: string
   updated_at: string
 }
 
+interface DCRStats {
+  totalProspects: number
+  todaysProspects: number
+  thisWeeksProspects: number
+  assignedLeads: number
+}
+
+interface TopSource {
+  source: string
+  count: number
+}
+
+const formatSource = (s: string | null) => {
+  if (!s) return ''
+  return s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, ' ')
+}
+
+const CHART_COLORS = ['#4f46e5', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444']
+
 export default function Home() {
   const [prospects, setProspects] = useState<Prospect[]>([])
+  const [stats, setStats] = useState<DCRStats | null>(null)
+  const [topSources, setTopSources] = useState<TopSource[]>([])
   const [loading, setLoading] = useState(true)
+  const [statsLoading, setStatsLoading] = useState(true)
+  const [sourcesLoading, setSourcesLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [page, setPage] = useState(1)
+  const [rowsPerPage, setRowsPerPage] = useState(10)
+
+  const paginatedProspects = useMemo(() => {
+    const start = (page - 1) * rowsPerPage
+    return prospects.slice(start, start + rowsPerPage)
+  }, [prospects, page, rowsPerPage])
+
+  useEffect(() => {
+    setPage(1)
+  }, [prospects.length, rowsPerPage])
 
   useEffect(() => {
     fetchProspects()
+    fetchStats()
+    fetchTopSources()
   }, [])
 
   const fetchProspects = async () => {
     try {
       setLoading(true)
-      const response = await axios.get(`${API_URL}/prospects`)
+      const response = await api.get('/prospects')
       setProspects(response.data)
       setError(null)
     } catch (err: any) {
@@ -70,6 +107,38 @@ export default function Home() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const fetchStats = async () => {
+    try {
+      setStatsLoading(true)
+      const response = await api.get('/stats/dc-r')
+      setStats(response.data)
+    } catch (err: any) {
+      console.error('Error fetching stats:', err)
+      setStats(null)
+    } finally {
+      setStatsLoading(false)
+    }
+  }
+
+  const fetchTopSources = async () => {
+    try {
+      setSourcesLoading(true)
+      const response = await api.get('/stats/top-sources?limit=3')
+      setTopSources(response.data)
+    } catch (err: any) {
+      console.error('Error fetching top sources:', err)
+      setTopSources([])
+    } finally {
+      setSourcesLoading(false)
+    }
+  }
+
+  const refreshAll = () => {
+    fetchProspects()
+    fetchStats()
+    fetchTopSources()
   }
 
   return (
@@ -86,10 +155,116 @@ export default function Home() {
 
       {!loading && !error && (
         <div>
+          {/* DC_R role statistics section */}
+          <section style={{ marginBottom: '30px' }}>
+            <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '16px', color: '#1e293b' }}>
+              DC_R Role — Statistics
+            </h2>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+              gap: '16px'
+            }}>
+              <div style={{
+                background: 'white',
+                padding: '20px',
+                borderRadius: '8px',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                border: '1px solid #e2e8f0'
+              }}>
+                <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '4px' }}>Total Prospects</div>
+                <div style={{ fontSize: '28px', fontWeight: 700, color: '#0f172a' }}>
+                  {statsLoading ? '—' : (stats?.totalProspects ?? '—')}
+                </div>
+              </div>
+              <div style={{
+                background: 'white',
+                padding: '20px',
+                borderRadius: '8px',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                border: '1px solid #e2e8f0'
+              }}>
+                <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '4px' }}>Today&apos;s Prospects</div>
+                <div style={{ fontSize: '28px', fontWeight: 700, color: '#0f172a' }}>
+                  {statsLoading ? '—' : (stats?.todaysProspects ?? '—')}
+                </div>
+              </div>
+              <div style={{
+                background: 'white',
+                padding: '20px',
+                borderRadius: '8px',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                border: '1px solid #e2e8f0'
+              }}>
+                <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '4px' }}>This Week&apos;s Prospects</div>
+                <div style={{ fontSize: '28px', fontWeight: 700, color: '#0f172a' }}>
+                  {statsLoading ? '—' : (stats?.thisWeeksProspects ?? '—')}
+                </div>
+              </div>
+              <div style={{
+                background: 'white',
+                padding: '20px',
+                borderRadius: '8px',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                border: '1px solid #e2e8f0'
+              }}>
+                <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '4px' }}>Assigned Leads</div>
+                <div style={{ fontSize: '28px', fontWeight: 700, color: '#0f172a' }}>
+                  {statsLoading ? '—' : (stats?.assignedLeads ?? '—')}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Top 3 Sources graph */}
+          <section style={{ marginBottom: '30px', background: 'white', borderRadius: '8px', padding: '24px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e2e8f0' }}>
+            <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '16px', color: '#1e293b' }}>
+              Top 3 Prospect Sources
+            </h2>
+            {sourcesLoading ? (
+              <p style={{ color: '#64748b', padding: '40px 0', textAlign: 'center' }}>Loading chart...</p>
+            ) : topSources.length === 0 ? (
+              <p style={{ color: '#64748b', padding: '40px 0', textAlign: 'center' }}>No source data yet.</p>
+            ) : (
+              <>
+                <div style={{ width: '100%', height: 260 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={topSources.map(({ source, count }) => ({ name: formatSource(source), count }))}
+                      margin={{ top: 16, right: 16, left: 0, bottom: 8 }}
+                    >
+                      <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                      <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
+                      <Tooltip
+                        formatter={(value: number) => [`${value} prospects`, 'Count']}
+                        contentStyle={{ borderRadius: '6px', border: '1px solid #e2e8f0' }}
+                      />
+                      <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                        {topSources.map((_, index) => (
+                          <Cell key={index} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #f1f5f9' }}>
+                  {topSources.map(({ source, count }, i) => (
+                    <div key={source} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ width: 12, height: 12, borderRadius: 4, background: CHART_COLORS[i % CHART_COLORS.length] }} />
+                      <span style={{ fontSize: '14px', color: '#334155' }}>
+                        {formatSource(source)} – {count} prospects
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </section>
+
           <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h2>All Prospects ({prospects.length})</h2>
             <button 
-              onClick={fetchProspects}
+              onClick={refreshAll}
               style={{
                 padding: '10px 20px',
                 background: '#007bff',
@@ -109,7 +284,8 @@ export default function Home() {
             </p>
           ) : (
             <div style={{ background: 'white', borderRadius: '8px', overflow: 'hidden' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <div className="table-wrapper">
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
                 <thead>
                   <tr style={{ background: '#f8f9fa', borderBottom: '2px solid #dee2e6' }}>
                     <th style={{ padding: '12px', textAlign: 'left' }}>Name</th>
@@ -124,7 +300,7 @@ export default function Home() {
                   </tr>
                 </thead>
                 <tbody>
-                  {prospects.map((prospect) => (
+                  {paginatedProspects.map((prospect) => (
                     <tr key={prospect.id} style={{ borderBottom: '1px solid #dee2e6' }}>
                       <td style={{ padding: '12px' }}>{prospect.name || '-'}</td>
                       <td style={{ padding: '12px' }}>{prospect.email || '-'}</td>
@@ -193,6 +369,14 @@ export default function Home() {
                   ))}
                 </tbody>
               </table>
+              </div>
+              <TablePagination
+                totalItems={prospects.length}
+                page={page}
+                onPageChange={setPage}
+                rowsPerPage={rowsPerPage}
+                onRowsPerPageChange={setRowsPerPage}
+              />
             </div>
           )}
         </div>

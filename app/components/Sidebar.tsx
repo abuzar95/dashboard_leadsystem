@@ -1,7 +1,8 @@
 'use client'
 
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { useAuth } from '../context/AuthContext'
 
 const navItems = [
   { href: '/', label: 'Prospects', icon: '📋' },
@@ -12,6 +13,13 @@ const navItems = [
 
 export default function Sidebar() {
   const pathname = usePathname()
+  const router = useRouter()
+  const { user, logout } = useAuth()
+
+  const handleLogout = () => {
+    logout()
+    router.push('/login')
+  }
 
   return (
     <aside className="sidebar">
@@ -28,6 +36,17 @@ export default function Sidebar() {
           </Link>
         ))}
       </nav>
+      <div className="sidebar-footer">
+        {user && (
+          <span className="sidebar-user" title={user.email}>
+            {user.username || user.email}
+          </span>
+        )}
+        <button type="button" className="sidebar-link logout-btn" onClick={handleLogout}>
+          <span>🚪</span>
+          <span>Sign out</span>
+        </button>
+      </div>
     </aside>
   )
 }
