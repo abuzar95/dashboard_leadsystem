@@ -529,7 +529,7 @@ export default function Home() {
                           outerRadius={90}
                           label={({ name, value }) => `${name}: ${value}`}
                         />
-                        <Tooltip formatter={(value: number) => [value, 'Prospects']} contentStyle={{ borderRadius: '6px', border: '1px solid #e2e8f0' }} />
+                        <Tooltip formatter={(value: number | undefined) => [value ?? 0, 'Prospects']} contentStyle={{ borderRadius: '6px', border: '1px solid #e2e8f0' }} />
                         <Legend />
                       </PieChart>
                     </ResponsiveContainer>
