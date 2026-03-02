@@ -4,17 +4,24 @@ import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '../context/AuthContext'
 
-const navItems = [
-  { href: '/', label: 'Prospects', icon: '📋' },
-  { href: '/users', label: 'Users & Roles', icon: '👥' },
-  { href: '/skills', label: 'Skills', icon: '🛠️' },
-  { href: '/linkedin-profiles', label: 'LinkedIn Profiles', icon: '💼' },
+const ALL_NAV_ITEMS = [
+  { href: '/', label: 'Prospects', icon: '📋', adminOnly: true },
+  { href: '/dcr', label: 'DC&R Dashboard', icon: '📊', nonAdminOnly: true },
+  { href: '/users', label: 'Users & Roles', icon: '👥', adminOnly: true },
+  { href: '/skills', label: 'Skills', icon: '🛠️', adminOnly: true },
+  { href: '/linkedin-profiles', label: 'LinkedIn Profiles', icon: '💼', adminOnly: true },
 ]
 
 export default function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
   const { user, logout } = useAuth()
+  const isAdmin = user?.role === 'admin'
+  const navItems = ALL_NAV_ITEMS.filter((item) => {
+    if (item.adminOnly) return isAdmin
+    if ((item as { nonAdminOnly?: boolean }).nonAdminOnly) return !isAdmin
+    return true
+  })
 
   const handleLogout = () => {
     logout()

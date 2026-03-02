@@ -18,7 +18,7 @@ interface AuthContextValue {
   user: AuthUser | null
   token: string | null
   loading: boolean
-  login: (login: string, password: string) => Promise<void>
+  login: (login: string, password: string) => Promise<AuthUser>
   logout: () => void
   setAuth: (user: AuthUser, token: string) => void
 }
@@ -52,7 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(USER_KEY, JSON.stringify(authUser))
   }, [])
 
-  const login = useCallback(async (loginId: string, password: string) => {
+  const login = useCallback(async (loginId: string, password: string): Promise<AuthUser> => {
     const res = await fetch(`${API_URL}/auth/dashboard-login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -61,6 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const data = await res.json()
     if (!res.ok) throw new Error(data.error || 'Login failed')
     setAuth(data.user, data.token)
+    return data.user
   }, [setAuth])
 
   const logout = useCallback(() => {
