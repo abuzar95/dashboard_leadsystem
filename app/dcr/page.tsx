@@ -120,7 +120,7 @@ export default function DCRDashboardPage() {
   }
 
   return (
-    <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
+    <div className="page-content" style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
       <header style={{ marginBottom: '30px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <h1 style={{ fontSize: '28px', marginBottom: '8px' }}>DC&R Dashboard</h1>
@@ -139,7 +139,7 @@ export default function DCRDashboardPage() {
       {/* DC_R Statistics */}
       <section style={{ marginBottom: '30px' }}>
         <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '16px', color: '#1e293b' }}>DC&R Statistics</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+        <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
           <div style={cardStyle}>
             <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '4px' }}>Total Prospects</div>
             <div style={{ fontSize: '28px', fontWeight: 700, color: '#0f172a' }}>{stats?.totalProspects ?? '—'}</div>
@@ -169,7 +169,7 @@ export default function DCRDashboardPage() {
           {userActivity.length === 0 ? (
             <p style={{ color: '#64748b', padding: '24px', textAlign: 'center' }}>No DC&R users or data yet.</p>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '12px' }}>
+            <div className="user-activity-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '12px' }}>
               {userActivity.map((u) => (
                 <div key={u.userId} style={{ ...cardStyle, padding: '16px' }}>
                   <div style={{ fontSize: '14px', fontWeight: 600, color: '#0f172a', marginBottom: '8px' }}>{u.name}</div>
@@ -188,7 +188,7 @@ export default function DCRDashboardPage() {
         <div style={{ marginBottom: '24px' }}>
           <h3 style={{ fontSize: '15px', fontWeight: 600, marginBottom: '12px', color: '#334155' }}>Stage Conversion</h3>
           <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '12px' }}>LNC → LC conversions</p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+          <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
             <div style={cardStyle}>
               <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '4px' }}>LNC → LC Today</div>
               <div style={{ fontSize: '28px', fontWeight: 700, color: '#0f172a' }}>{stageConversion?.lncToLcToday ?? '—'}</div>
@@ -215,7 +215,7 @@ export default function DCRDashboardPage() {
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
+        <div className="charts-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
           <div style={cardStyle}>
             <h4 style={{ fontSize: '15px', fontWeight: 600, marginBottom: '16px', color: '#1e293b' }}>Stage-wise prospect distribution</h4>
             {!prospectsByStage?.byStage?.length ? (

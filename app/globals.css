@@ -43,6 +43,29 @@ code {
   padding: 32px 40px;
   overflow-y: auto;
   max-width: 1200px;
+  position: relative;
+}
+
+.mobile-menu-btn {
+  display: none;
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  z-index: 1000;
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: #1e293b;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.mobile-menu-btn:hover {
+  background: #f8fafc;
 }
 
 .sidebar-brand {
@@ -409,4 +432,153 @@ code {
   width: 100%;
   margin-top: 8px;
   padding: 12px;
+}
+
+/* Hide overlay and mobile menu on desktop */
+@media (min-width: 769px) {
+  .sidebar-overlay {
+    display: none !important;
+  }
+}
+
+/* ==================== Mobile Responsive ==================== */
+@media (max-width: 768px) {
+  .dashboard-layout {
+    flex-direction: column;
+    position: relative;
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 260px;
+    max-width: 85vw;
+    height: 100vh;
+    z-index: 1100;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.2);
+  }
+
+  .sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 1050;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .sidebar-overlay.visible {
+    display: block;
+    opacity: 1;
+  }
+
+  .main-content {
+    padding: 16px;
+    padding-top: 56px;
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .mobile-menu-btn {
+    display: flex;
+  }
+
+  .main-content-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+  }
+
+  .page-header {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .page-title {
+    font-size: 20px;
+  }
+
+  .login-page {
+    padding: 16px;
+  }
+
+  .login-card {
+    padding: 28px 24px;
+  }
+
+  .login-title {
+    font-size: 22px;
+  }
+
+  /* Responsive grids */
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 12px !important;
+  }
+
+  .stats-grid-sm {
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+  .prospects-stage-grid {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+
+  .filter-row {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  .filter-row > * {
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  .search-row {
+    grid-template-columns: 1fr !important;
+  }
+
+  .chart-container {
+    min-height: 220px !important;
+  }
+
+  .user-activity-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .charts-row {
+    grid-template-columns: 1fr !important;
+  }
+
+  .page-content {
+    padding: 16px !important;
+  }
+
+  .modal-content {
+    width: 100%;
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .stats-grid,
+  .stats-grid-sm {
+    grid-template-columns: 1fr !important;
+  }
+
+  .main-content {
+    padding: 12px;
+  }
 }

@@ -3,7 +3,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import api from './lib/api'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts'
-import TablePagination from './components/TablePagination'
 
 const STATUS_STYLE: Record<string, { bg: string; text: string }> = {
   new:              { bg: '#e3f2fd', text: '#1565c0' },
@@ -42,13 +41,26 @@ interface Prospect {
   category: string | null
   intent_category: string | null
   intent_proof_link: string | null
+  intent_skills?: string[]
   status: string
   sources: string | null
+  lead_score?: number | null
+  last_contacted_at?: string | null
+  next_follow_up_date?: string | null
   user_id: string
   lh_user_id: string | null
   created_at: string
   updated_at: string
 }
+
+// Stage groups for display
+const STAGE_GROUPS = [
+  { key: 'new_refined', label: 'New & Data Refined', statuses: ['new', 'data_refined'] },
+  { key: 'lnc', label: 'LNC (incl. B-LNC)', statuses: ['LNC', 'B_LNC'] },
+  { key: 'lc', label: 'LC (incl. B-LC)', statuses: ['LC', 'B_LC'] },
+  { key: 'blnc_blc', label: 'BLNC / BLC', statuses: ['B_LNC', 'B_LC'] },
+  { key: 'other', label: 'Other', statuses: ['use_in_campaign', 'pitch', 'COMMUNICATION', 'TRASH'] },
+] as const
 
 interface DCRStats {
   totalProspects: number
@@ -110,6 +122,86 @@ const formatCategory = (c: string) => {
 
 const CHART_COLORS = ['#4f46e5', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444']
 
+const ProspectCard = ({
+  prospect,
+  statusStyle,
+  statusLabels,
+}: {
+  prospect: Prospect
+  statusStyle: Record<string, { bg: string; text: string }>
+  statusLabels: Record<string, string>
+}) => (
+  <div
+    style={{
+      padding: '14px',
+      borderRadius: '8px',
+      background: '#f8fafc',
+      border: '1px solid #e2e8f0',
+      fontSize: '13px',
+    }}
+  >
+    <div style={{ fontWeight: 600, color: '#0f172a', marginBottom: '6px' }}>{prospect.name || '—'}</div>
+    <div style={{ color: '#64748b', marginBottom: '4px' }}>{prospect.company_name || '—'}</div>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
+      {prospect.category && (
+        <span style={{ padding: '2px 8px', borderRadius: '4px', background: '#e2e8f0', color: '#475569', fontSize: '11px' }}>
+          {prospect.category.replace(/_/g, '-')}
+        </span>
+      )}
+      {prospect.lead_score != null && (
+        <span style={{ padding: '2px 8px', borderRadius: '4px', background: '#fef3c7', color: '#b45309', fontSize: '11px' }}>
+          Score: {prospect.lead_score}
+        </span>
+      )}
+      <span
+        style={{
+          padding: '2px 8px',
+          borderRadius: '4px',
+          background: statusStyle[prospect.status]?.bg || '#f1f5f9',
+          color: statusStyle[prospect.status]?.text || '#475569',
+          fontSize: '11px',
+        }}
+      >
+        {statusLabels[prospect.status] || prospect.status}
+      </span>
+    </div>
+    <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>
+      Last contacted: {prospect.last_contacted_at ? new Date(prospect.last_contacted_at).toLocaleDateString() : '—'}
+    </div>
+    <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '6px' }}>
+      Next follow-up: {prospect.next_follow_up_date ? new Date(prospect.next_follow_up_date).toLocaleDateString() : '—'}
+    </div>
+    {Array.isArray(prospect.intent_skills) && prospect.intent_skills.length > 0 && (
+      <div style={{ marginBottom: '6px' }}>
+        <span style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>Skills: </span>
+        <span style={{ fontSize: '12px', color: '#475569' }}>{prospect.intent_skills.join(', ')}</span>
+      </div>
+    )}
+    <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #e2e8f0' }}>
+      {prospect.linkedin_url && (
+        <a href={prospect.linkedin_url} target="_blank" rel="noopener noreferrer" style={{ color: '#4f46e5', fontSize: '12px', textDecoration: 'underline' }}>
+          LinkedIn →
+        </a>
+      )}
+      {prospect.website_link && (
+        <a
+          href={prospect.website_link.startsWith('http') ? prospect.website_link : `https://${prospect.website_link}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ color: '#4f46e5', fontSize: '12px', textDecoration: 'underline' }}
+        >
+          Website →
+        </a>
+      )}
+      {prospect.email && (
+        <a href={`mailto:${prospect.email}`} style={{ color: '#4f46e5', fontSize: '12px', textDecoration: 'underline' }}>
+          {prospect.email}
+        </a>
+      )}
+    </div>
+  </div>
+)
+
 export default function Home() {
   const [prospects, setProspects] = useState<Prospect[]>([])
   const [stats, setStats] = useState<DCRStats | null>(null)
@@ -129,17 +221,81 @@ export default function Home() {
   const [prospectsByStage, setProspectsByStage] = useState<ProspectsByStage | null>(null)
   const [prospectsByStageLoading, setProspectsByStageLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [page, setPage] = useState(1)
-  const [rowsPerPage, setRowsPerPage] = useState(10)
+  const [searchName, setSearchName] = useState('')
+  const [searchCompany, setSearchCompany] = useState('')
+  const [searchEmail, setSearchEmail] = useState('')
+  const [filterCategory, setFilterCategory] = useState('')
+  const [filterLeadScore, setFilterLeadScore] = useState('')
+  const [filterStatus, setFilterStatus] = useState('')
+  const [filterLastContactedFrom, setFilterLastContactedFrom] = useState('')
+  const [filterLastContactedTo, setFilterLastContactedTo] = useState('')
+  const [filterNextFollowUpFrom, setFilterNextFollowUpFrom] = useState('')
+  const [filterNextFollowUpTo, setFilterNextFollowUpTo] = useState('')
 
-  const paginatedProspects = useMemo(() => {
-    const start = (page - 1) * rowsPerPage
-    return prospects.slice(start, start + rowsPerPage)
-  }, [prospects, page, rowsPerPage])
+  const categories = useMemo(() => {
+    const set = new Set<string>()
+    prospects.forEach((p) => { if (p.category) set.add(p.category) })
+    return Array.from(set).sort()
+  }, [prospects])
 
-  useEffect(() => {
-    setPage(1)
-  }, [prospects.length, rowsPerPage])
+  const filteredProspects = useMemo(() => {
+    return prospects.filter((p) => {
+      const searchLower = searchName.trim().toLowerCase() || searchCompany.trim().toLowerCase() || searchEmail.trim().toLowerCase()
+      if (searchLower) {
+        const name = (p.name || '').toLowerCase()
+        const company = (p.company_name || '').toLowerCase()
+        const email = (p.email || '').toLowerCase()
+        const matchesName = !searchName.trim() || name.includes(searchName.trim().toLowerCase())
+        const matchesCompany = !searchCompany.trim() || company.includes(searchCompany.trim().toLowerCase())
+        const matchesEmail = !searchEmail.trim() || email.includes(searchEmail.trim().toLowerCase())
+        if (!matchesName || !matchesCompany || !matchesEmail) return false
+      }
+      if (filterCategory && p.category !== filterCategory) return false
+      if (filterLeadScore.trim()) {
+        const ls = p.lead_score
+        const val = parseInt(filterLeadScore, 10)
+        if (Number.isNaN(val) || ls == null || ls < val) return false
+      }
+      if (filterStatus && p.status !== filterStatus) return false
+      if (filterLastContactedFrom || filterLastContactedTo) {
+        const lc = p.last_contacted_at ? new Date(p.last_contacted_at) : null
+        if (!lc) return false
+        const lcDate = lc.toISOString().slice(0, 10)
+        if (filterLastContactedFrom && lcDate < filterLastContactedFrom) return false
+        if (filterLastContactedTo && lcDate > filterLastContactedTo) return false
+      }
+      if (filterNextFollowUpFrom || filterNextFollowUpTo) {
+        const nf = p.next_follow_up_date ? new Date(p.next_follow_up_date) : null
+        if (!nf) return false
+        const nfDate = nf.toISOString().slice(0, 10)
+        if (filterNextFollowUpFrom && nfDate < filterNextFollowUpFrom) return false
+        if (filterNextFollowUpTo && nfDate > filterNextFollowUpTo) return false
+      }
+      return true
+    })
+  }, [
+    prospects,
+    searchName,
+    searchCompany,
+    searchEmail,
+    filterCategory,
+    filterLeadScore,
+    filterStatus,
+    filterLastContactedFrom,
+    filterLastContactedTo,
+    filterNextFollowUpFrom,
+    filterNextFollowUpTo,
+  ])
+
+  const prospectsGroupedByStage = useMemo(() => {
+    const byStage: Record<string, Prospect[]> = {}
+    STAGE_GROUPS.forEach((g) => { byStage[g.key] = [] })
+    filteredProspects.forEach((p) => {
+      const group = STAGE_GROUPS.find((g) => g.statuses.includes(p.status))
+      byStage[group?.key ?? 'other'].push(p)
+    })
+    return byStage
+  }, [filteredProspects])
 
   useEffect(() => {
     fetchProspects()
@@ -275,7 +431,7 @@ export default function Home() {
   }
 
   return (
-    <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
+    <div className="page-content" style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
       <header style={{ marginBottom: '30px' }}>
         <h1 style={{ fontSize: '32px', marginBottom: '10px' }}>
           Prospect Management Dashboard
@@ -293,7 +449,7 @@ export default function Home() {
             <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '16px', color: '#1e293b' }}>
               DC_R Role — Statistics
             </h2>
-            <div style={{
+            <div className="stats-grid" style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
               gap: '16px'
@@ -354,7 +510,7 @@ export default function Home() {
             <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '16px', color: '#1e293b' }}>
               LH Role — Statistics
             </h2>
-            <div style={{
+            <div className="stats-grid" style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
               gap: '16px'
@@ -425,7 +581,7 @@ export default function Home() {
               ) : userActivity.length === 0 ? (
                 <p style={{ color: '#64748b', padding: '24px', textAlign: 'center' }}>No DC&amp;R users or data yet.</p>
               ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '12px' }}>
+                <div className="user-activity-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '12px' }}>
                   {userActivity.map((u) => (
                     <div
                       key={u.userId}
@@ -510,7 +666,7 @@ export default function Home() {
             </div>
 
             {/* Charts row: Stage distribution + User-wise captured */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
+            <div className="charts-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
               {/* Stage-wise prospect distribution (Pie) */}
               <div style={{ background: 'white', borderRadius: '8px', padding: '24px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e2e8f0' }}>
                 <h4 style={{ fontSize: '15px', fontWeight: 600, marginBottom: '16px', color: '#1e293b' }}>Stage-wise prospect distribution</h4>
@@ -659,124 +815,145 @@ export default function Home() {
             )}
           </section>
 
-          <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h2>All Prospects ({prospects.length})</h2>
-            <button 
-              onClick={refreshAll}
-              style={{
-                padding: '10px 20px',
-                background: '#007bff',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer'
-              }}
-            >
-              Refresh
-            </button>
-          </div>
+          {/* Prospects: grouped by stage, card-based, with search & filters */}
+          <section style={{ marginBottom: '30px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '20px' }}>
+              <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#1e293b' }}>
+                Prospects ({filteredProspects.length}{filteredProspects.length !== prospects.length ? ` of ${prospects.length}` : ''})
+              </h2>
+              <button
+                type="button"
+                onClick={refreshAll}
+                style={{ padding: '10px 20px', background: '#4f46e5', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}
+              >
+                Refresh
+              </button>
+            </div>
 
-          {prospects.length === 0 ? (
-            <p style={{ padding: '40px', textAlign: 'center', color: '#666' }}>
-              No prospects found. Start adding prospects using the extension!
-            </p>
-          ) : (
-            <div style={{ background: 'white', borderRadius: '8px', overflow: 'hidden' }}>
-              <div className="table-wrapper">
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
-                <thead>
-                  <tr style={{ background: '#f8f9fa', borderBottom: '2px solid #dee2e6' }}>
-                    <th style={{ padding: '12px', textAlign: 'left' }}>Name</th>
-                    <th style={{ padding: '12px', textAlign: 'left' }}>Email</th>
-                    <th style={{ padding: '12px', textAlign: 'left' }}>Company</th>
-                    <th style={{ padding: '12px', textAlign: 'left' }}>Category</th>
-                    <th style={{ padding: '12px', textAlign: 'left' }}>Intent Category</th>
-                    <th style={{ padding: '12px', textAlign: 'left' }}>Intent Proof</th>
-                    <th style={{ padding: '12px', textAlign: 'left' }}>Status</th>
-                    <th style={{ padding: '12px', textAlign: 'left' }}>Source</th>
-                    <th style={{ padding: '12px', textAlign: 'left' }}>Created</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {paginatedProspects.map((prospect) => (
-                    <tr key={prospect.id} style={{ borderBottom: '1px solid #dee2e6' }}>
-                      <td style={{ padding: '12px' }}>{prospect.name || '-'}</td>
-                      <td style={{ padding: '12px' }}>{prospect.email || '-'}</td>
-                      <td style={{ padding: '12px' }}>{prospect.company_name || '-'}</td>
-                      <td style={{ padding: '12px' }}>
-                        {prospect.category ? (
-                          <span style={{ textTransform: 'capitalize' }}>
-                            {prospect.category.replace('_', '-')}
-                          </span>
-                        ) : '-'}
-                      </td>
-                      <td style={{ padding: '12px' }}>
-                        {prospect.intent_category ? (
-                          <span style={{
-                            padding: '4px 8px',
-                            borderRadius: '4px',
-                            background: prospect.intent_category === 'Individual' ? '#fff3e0' : prospect.intent_category === 'Business' ? '#e0f2f1' : '#ede7f6',
-                            color: prospect.intent_category === 'Individual' ? '#e65100' : prospect.intent_category === 'Business' ? '#00695c' : '#4527a0',
-                            fontSize: '12px'
-                          }}>
-                            {prospect.intent_category}
-                          </span>
-                        ) : '-'}
-                      </td>
-                      <td style={{ padding: '12px' }}>
-                        {prospect.intent_proof_link ? (
-                          <a
-                            href={prospect.intent_proof_link}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{ color: '#1976d2', textDecoration: 'underline', fontSize: '13px' }}
-                          >
-                            View Proof
-                          </a>
-                        ) : '-'}
-                      </td>
-                      <td style={{ padding: '12px' }}>
-                        <span style={{
-                          padding: '4px 8px',
-                          borderRadius: '4px',
-                          background: STATUS_STYLE[prospect.status]?.bg || '#f1f5f9',
-                          color: STATUS_STYLE[prospect.status]?.text || '#475569',
-                          fontSize: '12px'
-                        }}>
-                          {STATUS_LABELS[prospect.status] || prospect.status}
-                        </span>
-                      </td>
-                      <td style={{ padding: '12px' }}>
-                        {prospect.sources ? (
-                          <span style={{
-                            padding: '4px 8px',
-                            borderRadius: '4px',
-                            background: '#e8f5e9',
-                            color: '#2e7d32',
-                            fontSize: '12px',
-                            textTransform: 'capitalize'
-                          }}>
-                            {prospect.sources}
-                          </span>
-                        ) : '-'}
-                      </td>
-                      <td style={{ padding: '12px', color: '#666', fontSize: '14px' }}>
-                        {new Date(prospect.created_at).toLocaleDateString()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              </div>
-              <TablePagination
-                totalItems={prospects.length}
-                page={page}
-                onPageChange={setPage}
-                rowsPerPage={rowsPerPage}
-                onRowsPerPageChange={setRowsPerPage}
+            {/* Search */}
+            <div className="search-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '16px' }}>
+              <input
+                type="search"
+                placeholder="Search by name"
+                value={searchName}
+                onChange={(e) => setSearchName(e.target.value)}
+                style={{ padding: '10px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '14px' }}
+              />
+              <input
+                type="search"
+                placeholder="Search by company"
+                value={searchCompany}
+                onChange={(e) => setSearchCompany(e.target.value)}
+                style={{ padding: '10px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '14px' }}
+              />
+              <input
+                type="search"
+                placeholder="Search by email (optional)"
+                value={searchEmail}
+                onChange={(e) => setSearchEmail(e.target.value)}
+                style={{ padding: '10px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '14px' }}
               />
             </div>
-          )}
+
+            {/* Filters */}
+            <div className="filter-row" style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '20px', alignItems: 'center' }}>
+              <select
+                value={filterCategory}
+                onChange={(e) => setFilterCategory(e.target.value)}
+                style={{ padding: '10px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '14px', minWidth: '140px' }}
+              >
+                <option value="">All Categories</option>
+                {categories.map((c) => (
+                  <option key={c} value={c}>{c.replace(/_/g, '-')}</option>
+                ))}
+              </select>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                placeholder="Min Lead Score"
+                value={filterLeadScore}
+                onChange={(e) => setFilterLeadScore(e.target.value)}
+                style={{ padding: '10px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '14px', width: '120px' }}
+              />
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                style={{ padding: '10px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '14px', minWidth: '140px' }}
+              >
+                <option value="">All Statuses</option>
+                {Object.entries(STATUS_LABELS).map(([s, l]) => (
+                  <option key={s} value={s}>{l}</option>
+                ))}
+              </select>
+              <span style={{ fontSize: '13px', color: '#64748b' }}>Last Contacted:</span>
+              <input
+                type="date"
+                value={filterLastContactedFrom}
+                onChange={(e) => setFilterLastContactedFrom(e.target.value)}
+                style={{ padding: '10px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '14px' }}
+              />
+              <span style={{ color: '#64748b' }}>–</span>
+              <input
+                type="date"
+                value={filterLastContactedTo}
+                onChange={(e) => setFilterLastContactedTo(e.target.value)}
+                style={{ padding: '10px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '14px' }}
+              />
+              <span style={{ fontSize: '13px', color: '#64748b' }}>Next Follow-up:</span>
+              <input
+                type="date"
+                value={filterNextFollowUpFrom}
+                onChange={(e) => setFilterNextFollowUpFrom(e.target.value)}
+                style={{ padding: '10px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '14px' }}
+              />
+              <span style={{ color: '#64748b' }}>–</span>
+              <input
+                type="date"
+                value={filterNextFollowUpTo}
+                onChange={(e) => setFilterNextFollowUpTo(e.target.value)}
+                style={{ padding: '10px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '14px' }}
+              />
+            </div>
+
+            {prospects.length === 0 ? (
+              <p style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
+                No prospects found. Start adding prospects using the extension!
+              </p>
+            ) : filteredProspects.length === 0 ? (
+              <p style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
+                No prospects match your filters.
+              </p>
+            ) : (
+              <div className="prospects-stage-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
+                {STAGE_GROUPS.map((group) => (
+                  <div
+                    key={group.key}
+                    style={{
+                      background: 'white',
+                      borderRadius: '8px',
+                      padding: '20px',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                      border: '1px solid #e2e8f0',
+                      minHeight: '200px',
+                    }}
+                  >
+                    <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '16px', color: '#1e293b', paddingBottom: '8px', borderBottom: '1px solid #f1f5f9' }}>
+                      {group.label} ({prospectsGroupedByStage[group.key]?.length ?? 0})
+                    </h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '500px', overflowY: 'auto' }}>
+                      {(prospectsGroupedByStage[group.key] ?? []).map((p) => (
+                        <ProspectCard key={p.id} prospect={p} statusStyle={STATUS_STYLE} statusLabels={STATUS_LABELS} />
+                      ))}
+                      {(prospectsGroupedByStage[group.key] ?? []).length === 0 && (
+                        <p style={{ fontSize: '13px', color: '#94a3b8', fontStyle: 'italic' }}>No prospects</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
         </div>
       )}
     </div>

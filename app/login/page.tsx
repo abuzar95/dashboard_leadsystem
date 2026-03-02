@@ -22,7 +22,10 @@ export default function LoginPage() {
     setSubmitting(true)
     try {
       const user = await doLogin(login.trim(), password)
-      router.replace(user?.role === 'admin' ? '/' : '/dcr')
+      const role = user?.role
+      if (role === 'admin') router.replace('/')
+      else if (role === 'LH') router.replace('/lh')
+      else router.replace('/dcr')
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Login failed')
     } finally {
