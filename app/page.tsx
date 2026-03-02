@@ -291,7 +291,7 @@ export default function Home() {
     const byStage: Record<string, Prospect[]> = {}
     STAGE_GROUPS.forEach((g) => { byStage[g.key] = [] })
     filteredProspects.forEach((p) => {
-      const group = STAGE_GROUPS.find((g) => g.statuses.includes(p.status))
+      const group = STAGE_GROUPS.find((g) => (g.statuses as readonly string[]).includes(p.status))
       byStage[group?.key ?? 'other'].push(p)
     })
     return byStage
