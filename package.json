@@ -4,8 +4,9 @@
   "description": "Dashboard for Prospect Management System",
   "private": true,
   "scripts": {
+    "generate-icons": "node scripts/generate-icons.js",
     "dev": "next dev",
-    "build": "next build",
+    "build": "npm run generate-icons && next build",
     "start": "next start",
     "lint": "next lint"
   },
@@ -22,6 +23,7 @@
     "@types/react-dom": "^18.2.15",
     "eslint": "^8.53.0",
     "eslint-config-next": "^14.0.3",
+    "sharp": "^0.34.5",
     "typescript": "^5.2.2"
   }
 }
