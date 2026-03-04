@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import api from '../lib/api'
 
 const STATUS_STYLE: Record<string, { bg: string; text: string }> = {
@@ -64,18 +65,40 @@ const ProspectCard = ({
   prospect,
   statusStyle,
   statusLabels,
+  onClick,
 }: {
   prospect: Prospect
   statusStyle: Record<string, { bg: string; text: string }>
   statusLabels: Record<string, string>
+  onClick?: () => void
 }) => (
   <div
+    role="button"
+    tabIndex={0}
+    onClick={onClick}
+    onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onClick?.()}
     style={{
       padding: '14px',
       borderRadius: '8px',
       background: '#f8fafc',
       border: '1px solid #e2e8f0',
       fontSize: '13px',
+      cursor: onClick ? 'pointer' : 'default',
+      transition: 'background 0.15s, border-color 0.15s, box-shadow 0.15s',
+    }}
+    onMouseEnter={(e) => {
+      if (onClick) {
+        e.currentTarget.style.background = '#f1f5f9'
+        e.currentTarget.style.borderColor = '#cbd5e1'
+        e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.06)'
+      }
+    }}
+    onMouseLeave={(e) => {
+      if (onClick) {
+        e.currentTarget.style.background = '#f8fafc'
+        e.currentTarget.style.borderColor = '#e2e8f0'
+        e.currentTarget.style.boxShadow = 'none'
+      }
     }}
   >
     <div style={{ fontWeight: 600, color: '#0f172a', marginBottom: '6px' }}>{prospect.name || '—'}</div>
@@ -115,7 +138,7 @@ const ProspectCard = ({
         <span style={{ fontSize: '12px', color: '#475569' }}>{prospect.intent_skills.join(', ')}</span>
       </div>
     )}
-    <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #e2e8f0' }}>
+    <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #e2e8f0' }} onClick={(e) => e.stopPropagation()}>
       {prospect.linkedin_url && (
         <a href={prospect.linkedin_url} target="_blank" rel="noopener noreferrer" style={{ color: '#4f46e5', fontSize: '12px', textDecoration: 'underline' }}>
           LinkedIn →
@@ -141,6 +164,7 @@ const ProspectCard = ({
 )
 
 export default function ProspectsPage() {
+  const router = useRouter()
   const [prospects, setProspects] = useState<Prospect[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -350,7 +374,13 @@ export default function ProspectsPage() {
                   </h3>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '500px', overflowY: 'auto' }}>
                     {(prospectsGroupedByStage[group.key] ?? []).map((p) => (
-                      <ProspectCard key={p.id} prospect={p} statusStyle={STATUS_STYLE} statusLabels={STATUS_LABELS} />
+                      <ProspectCard
+                        key={p.id}
+                        prospect={p}
+                        statusStyle={STATUS_STYLE}
+                        statusLabels={STATUS_LABELS}
+                        onClick={() => router.push(`/prospects/${p.id}`)}
+                      />
                     ))}
                     {(prospectsGroupedByStage[group.key] ?? []).length === 0 && (
                       <p style={{ fontSize: '13px', color: '#94a3b8', fontStyle: 'italic' }}>No prospects</p>
