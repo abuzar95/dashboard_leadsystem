@@ -5,7 +5,8 @@ import Link from 'next/link'
 import { useAuth } from '../context/AuthContext'
 
 const ALL_NAV_ITEMS = [
-  { href: '/', label: 'Prospects', icon: '📋', adminOnly: true },
+  { href: '/dashboard', label: 'Dashboard', icon: '📊', adminOnly: true },
+  { href: '/prospects', label: 'Prospects', icon: '📋', adminOnly: true },
   { href: '/dcr', label: 'DC&R Dashboard', icon: '📊', dcROnly: true },
   { href: '/lh', label: 'LH Dashboard', icon: '📈', lhOnly: true },
   { href: '/users', label: 'Users & Roles', icon: '👥', adminOnly: true },

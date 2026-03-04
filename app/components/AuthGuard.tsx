@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '../context/AuthContext'
 import Sidebar from './Sidebar'
 
-const ADMIN_ONLY_PATHS = ['/', '/users', '/skills', '/linkedin-profiles']
+const ADMIN_ONLY_PATHS = ['/', '/dashboard', '/prospects', '/users', '/skills', '/linkedin-profiles']
 const DCR_ONLY_PATHS = ['/dcr']
 const LH_ONLY_PATHS = ['/lh']
 
@@ -24,7 +24,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     if (isLoginPage) {
       if (token) {
         const role = user?.role
-        if (role === 'admin') router.replace('/')
+        if (role === 'admin') router.replace('/dashboard')
         else if (role === 'LH') router.replace('/lh')
         else router.replace('/dcr')
       }

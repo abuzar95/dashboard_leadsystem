@@ -23,7 +23,7 @@ export default function LoginPage() {
     try {
       const user = await doLogin(login.trim(), password)
       const role = user?.role
-      if (role === 'admin') router.replace('/')
+      if (role === 'admin') router.replace('/dashboard')
       else if (role === 'LH') router.replace('/lh')
       else router.replace('/dcr')
     } catch (err: unknown) {
