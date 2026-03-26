@@ -32,6 +32,7 @@ interface User {
   username: string | null
   name: string | null
   role: Role
+  em_prospect_type: 'business' | 'individual' | null
   linkedin_profile_id: string | null
   linkedin_profile: LinkedInProfileRef | null
   created_at: string
@@ -52,6 +53,7 @@ export default function UsersPage() {
   const [formPassword, setFormPassword] = useState('')
   const [formRole, setFormRole] = useState<Role>('DC_R')
   const [formLinkedinProfileId, setFormLinkedinProfileId] = useState('')
+  const [formEmProspectType, setFormEmProspectType] = useState<'business' | 'individual' | ''>('')
   const [formError, setFormError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [page, setPage] = useState(1)
@@ -102,6 +104,7 @@ export default function UsersPage() {
     setFormPassword('')
     setFormRole('DC_R')
     setFormLinkedinProfileId('')
+    setFormEmProspectType('')
     setFormError(null)
     setShowModal(true)
   }
@@ -114,6 +117,7 @@ export default function UsersPage() {
     setFormPassword('')
     setFormRole(user.role)
     setFormLinkedinProfileId(user.linkedin_profile_id || '')
+    setFormEmProspectType((user.em_prospect_type as 'business' | 'individual' | null) || '')
     setFormError(null)
     setShowModal(true)
   }
@@ -135,6 +139,10 @@ export default function UsersPage() {
       setFormError('LinkedIn Profile is required for LH role')
       return
     }
+    if (formRole === 'EM' && !formEmProspectType) {
+      setFormError('Prospect type is required for EM role')
+      return
+    }
     setSaving(true)
     setFormError(null)
     try {
@@ -142,6 +150,7 @@ export default function UsersPage() {
         name: formName.trim() || null,
         email: formEmail.trim(),
         role: formRole,
+        em_prospect_type: formRole === 'EM' ? formEmProspectType : null,
         linkedin_profile_id: formLinkedinProfileId || null,
       }
       if (formUsername.trim()) payload.username = formUsername.trim()
@@ -324,6 +333,7 @@ export default function UsersPage() {
                   const newRole = e.target.value as Role
                   setFormRole(newRole)
                   if (newRole !== 'LH') setFormLinkedinProfileId('')
+                  if (newRole !== 'EM') setFormEmProspectType('')
                 }}
               >
                 {ROLES.map((r) => (
@@ -350,6 +360,23 @@ export default function UsersPage() {
                       {p.name}
                     </option>
                   ))}
+                </select>
+              </div>
+            )}
+
+            {formRole === 'EM' && (
+              <div className="form-group">
+                <label className="form-label">
+                  Prospect Type <span style={{ color: '#dc2626' }}>*</span>
+                </label>
+                <select
+                  className="form-select"
+                  value={formEmProspectType}
+                  onChange={(e) => setFormEmProspectType(e.target.value as 'business' | 'individual' | '')}
+                >
+                  <option value="">Select prospect type</option>
+                  <option value="business">Business</option>
+                  <option value="individual">Individual</option>
                 </select>
               </div>
             )}
