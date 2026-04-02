@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { useAuth } from '../context/AuthContext'
 
 export default function LoginPage() {
@@ -11,8 +11,9 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false)
   const { login: doLogin } = useAuth()
   const router = useRouter()
-  const searchParams = useSearchParams()
-  const redirectParam = searchParams.get('redirect')
+  const redirectParam = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search).get('redirect')
+    : null
   const redirectTarget = redirectParam && redirectParam.startsWith('/') ? redirectParam : null
 
   async function handleSubmit(e: React.FormEvent) {

@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { useEffect, useMemo, useState } from 'react'
+import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '../context/AuthContext'
 import Sidebar from './Sidebar'
 
@@ -12,16 +12,23 @@ const LH_ONLY_PATHS = ['/lh']
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const { token, user, loading } = useAuth()
   const pathname = usePathname()
-  const searchParams = useSearchParams()
   const router = useRouter()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const isLoginPage = pathname === '/login'
   const isAdminOnlyPath = ADMIN_ONLY_PATHS.some((p) => pathname === p || pathname.startsWith(p + '/'))
   const isDCROnlyPath = DCR_ONLY_PATHS.some((p) => pathname === p || pathname.startsWith(p + '/'))
   const isLHOnlyPath = LH_ONLY_PATHS.some((p) => pathname === p || pathname.startsWith(p + '/'))
-  const redirectParam = searchParams.get('redirect')
+  const searchParamsString = useMemo(() => {
+    if (typeof window === 'undefined') return ''
+    return window.location.search || ''
+  }, [pathname])
+  const parsedSearchParams = useMemo(
+    () => new URLSearchParams(searchParamsString.startsWith('?') ? searchParamsString.slice(1) : searchParamsString),
+    [searchParamsString]
+  )
+  const redirectParam = parsedSearchParams.get('redirect')
   const redirectTarget = redirectParam && redirectParam.startsWith('/') ? redirectParam : null
-  const currentPathWithQuery = `${pathname}${searchParams.toString() ? `?${searchParams.toString()}` : ''}`
+  const currentPathWithQuery = `${pathname}${parsedSearchParams.toString() ? `?${parsedSearchParams.toString()}` : ''}`
 
   useEffect(() => {
     if (loading) return
