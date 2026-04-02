@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '../context/AuthContext'
 
 export default function LoginPage() {
@@ -11,6 +11,9 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false)
   const { login: doLogin } = useAuth()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const redirectParam = searchParams.get('redirect')
+  const redirectTarget = redirectParam && redirectParam.startsWith('/') ? redirectParam : null
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -22,10 +25,13 @@ export default function LoginPage() {
     setSubmitting(true)
     try {
       const user = await doLogin(login.trim(), password)
-      const role = user?.role
-      if (role === 'admin') router.replace('/dashboard')
-      else if (role === 'LH') router.replace('/lh')
-      else router.replace('/dcr')
+      if (redirectTarget) router.replace(redirectTarget)
+      else {
+        const role = user?.role
+        if (role === 'admin') router.replace('/dashboard')
+        else if (role === 'LH') router.replace('/lh')
+        else router.replace('/dcr')
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Login failed')
     } finally {

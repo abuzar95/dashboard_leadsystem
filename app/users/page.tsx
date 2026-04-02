@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import api from '../lib/api'
 import TablePagination from '../components/TablePagination'
+import { formatDatePKT } from '../lib/date'
 
 const ROLES = ['admin', 'DC_R', 'LH', 'EM'] as const
 type Role = typeof ROLES[number]
@@ -236,7 +237,7 @@ export default function UsersPage() {
                       {user.linkedin_profile?.name || '—'}
                     </td>
                     <td style={{ color: '#64748b' }}>
-                      {new Date(user.created_at).toLocaleDateString()}
+                      {formatDatePKT(user.created_at)}
                     </td>
                     <td>
                       <div style={{ display: 'flex', gap: '6px' }}>

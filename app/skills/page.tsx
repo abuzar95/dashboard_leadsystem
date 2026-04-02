@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import api from '../lib/api'
 import TablePagination from '../components/TablePagination'
+import { formatDatePKT } from '../lib/date'
 
 interface Skill {
   id: string
@@ -138,7 +139,7 @@ export default function SkillsPage() {
                   <tr key={skill.id}>
                     <td style={{ fontWeight: 500 }}>{skill.name}</td>
                     <td style={{ color: '#64748b' }}>
-                      {new Date(skill.created_at).toLocaleDateString()}
+                      {formatDatePKT(skill.created_at)}
                     </td>
                     <td>
                       <div style={{ display: 'flex', gap: '6px' }}>

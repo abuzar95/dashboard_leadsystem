@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import api from '../../lib/api'
+import { formatDatePKT } from '../../lib/date'
 
 const STATUS_STYLE: Record<string, { bg: string; text: string }> = {
   new: { bg: '#e3f2fd', text: '#1565c0' },
@@ -119,7 +120,7 @@ export default function ProspectDetailPage() {
       .finally(() => setLoading(false))
   }, [id])
 
-  const formatDate = (d: string | null | undefined) => (d ? new Date(d).toLocaleString() : '—')
+  const formatDate = (d: string | null | undefined) => formatDatePKT(d)
   const formatSource = (s: string | null | undefined) => (s ? s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : '—')
 
   if (loading) {

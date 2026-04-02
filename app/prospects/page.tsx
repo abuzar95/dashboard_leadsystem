@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import api from '../lib/api'
+import { formatDatePKT } from '../lib/date'
 
 const STATUS_STYLE: Record<string, { bg: string; text: string }> = {
   new: { bg: '#e3f2fd', text: '#1565c0' },
@@ -127,10 +128,10 @@ const ProspectCard = ({
       </span>
     </div>
     <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>
-      Last contacted: {prospect.last_contacted_at ? new Date(prospect.last_contacted_at).toLocaleDateString() : '—'}
+      Last contacted: {formatDatePKT(prospect.last_contacted_at)}
     </div>
     <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '6px' }}>
-      Next follow-up: {prospect.next_follow_up_date ? new Date(prospect.next_follow_up_date).toLocaleDateString() : '—'}
+      Next follow-up: {formatDatePKT(prospect.next_follow_up_date)}
     </div>
     {Array.isArray(prospect.intent_skills) && prospect.intent_skills.length > 0 && (
       <div style={{ marginBottom: '6px' }}>
