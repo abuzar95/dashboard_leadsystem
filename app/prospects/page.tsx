@@ -4,6 +4,8 @@ import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import api from '../lib/api'
 import { formatDatePKT } from '../lib/date'
+import { useAuth } from '../context/AuthContext'
+import { cacheFirstLoad, syncIfStale, setCachedData, markSynced } from '../lib/indexedDbCache'
 
 const STATUS_STYLE: Record<string, { bg: string; text: string }> = {
   new: { bg: '#e3f2fd', text: '#1565c0' },
@@ -47,11 +49,19 @@ interface Prospect {
   sources: string | null
   lead_score?: number | null
   last_contacted_at?: string | null
+  last_contacted_at_em?: string | null
   next_follow_up_date?: string | null
   user_id: string
   lh_user_id: string | null
   created_at: string
   updated_at: string
+}
+
+interface UserOption {
+  id: string
+  name: string | null
+  email: string
+  role: string
 }
 
 const STAGE_GROUPS = [
@@ -67,11 +77,13 @@ const ProspectCard = ({
   statusStyle,
   statusLabels,
   onClick,
+  onDelete,
 }: {
   prospect: Prospect
   statusStyle: Record<string, { bg: string; text: string }>
   statusLabels: Record<string, string>
   onClick?: () => void
+  onDelete?: () => void
 }) => (
   <div
     role="button"
@@ -160,25 +172,38 @@ const ProspectCard = ({
           {prospect.email}
         </a>
       )}
+      {onDelete && (
+        <button
+          type="button"
+          onClick={onDelete}
+          style={{ color: '#dc2626', fontSize: '12px', textDecoration: 'underline', border: 'none', background: 'transparent', cursor: 'pointer' }}
+        >
+          Delete
+        </button>
+      )}
     </div>
   </div>
 )
 
 export default function ProspectsPage() {
+  const { user } = useAuth()
   const router = useRouter()
   const [prospects, setProspects] = useState<Prospect[]>([])
+  const [lhUsers, setLhUsers] = useState<UserOption[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [searchName, setSearchName] = useState('')
-  const [searchCompany, setSearchCompany] = useState('')
-  const [searchEmail, setSearchEmail] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
   const [filterCategory, setFilterCategory] = useState('')
   const [filterLeadScore, setFilterLeadScore] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
-  const [filterLastContactedFrom, setFilterLastContactedFrom] = useState('')
-  const [filterLastContactedTo, setFilterLastContactedTo] = useState('')
-  const [filterNextFollowUpFrom, setFilterNextFollowUpFrom] = useState('')
-  const [filterNextFollowUpTo, setFilterNextFollowUpTo] = useState('')
+  const [filterLhUserId, setFilterLhUserId] = useState('')
+  const [filterIntentCategory, setFilterIntentCategory] = useState('')
+  const [filterNotPitchedLh, setFilterNotPitchedLh] = useState('')
+  const [filterNotPitchedEm, setFilterNotPitchedEm] = useState('')
+  const [creating, setCreating] = useState(false)
+  const [newProspectName, setNewProspectName] = useState('')
+  const [newProspectCategory, setNewProspectCategory] = useState('')
+  const [newProspectIntentCategory, setNewProspectIntentCategory] = useState('')
 
   const categories = useMemo(() => {
     const set = new Set<string>()
@@ -188,14 +213,12 @@ export default function ProspectsPage() {
 
   const filteredProspects = useMemo(() => {
     return prospects.filter((p) => {
-      if (searchName.trim() || searchCompany.trim() || searchEmail.trim()) {
+      if (searchQuery.trim()) {
         const name = (p.name || '').toLowerCase()
         const company = (p.company_name || '').toLowerCase()
         const email = (p.email || '').toLowerCase()
-        const matchesName = !searchName.trim() || name.includes(searchName.trim().toLowerCase())
-        const matchesCompany = !searchCompany.trim() || company.includes(searchCompany.trim().toLowerCase())
-        const matchesEmail = !searchEmail.trim() || email.includes(searchEmail.trim().toLowerCase())
-        if (!matchesName || !matchesCompany || !matchesEmail) return false
+        const q = searchQuery.trim().toLowerCase()
+        if (!name.includes(q) && !company.includes(q) && !email.includes(q)) return false
       }
       if (filterCategory && p.category !== filterCategory) return false
       if (filterLeadScore.trim()) {
@@ -204,34 +227,22 @@ export default function ProspectsPage() {
         if (Number.isNaN(val) || ls == null || ls < val) return false
       }
       if (filterStatus && p.status !== filterStatus) return false
-      if (filterLastContactedFrom || filterLastContactedTo) {
-        const lc = p.last_contacted_at ? new Date(p.last_contacted_at) : null
-        if (!lc) return false
-        const lcDate = lc.toISOString().slice(0, 10)
-        if (filterLastContactedFrom && lcDate < filterLastContactedFrom) return false
-        if (filterLastContactedTo && lcDate > filterLastContactedTo) return false
-      }
-      if (filterNextFollowUpFrom || filterNextFollowUpTo) {
-        const nf = p.next_follow_up_date ? new Date(p.next_follow_up_date) : null
-        if (!nf) return false
-        const nfDate = nf.toISOString().slice(0, 10)
-        if (filterNextFollowUpFrom && nfDate < filterNextFollowUpFrom) return false
-        if (filterNextFollowUpTo && nfDate > filterNextFollowUpTo) return false
-      }
+      if (filterLhUserId && p.lh_user_id !== filterLhUserId) return false
+      if (filterIntentCategory && p.intent_category !== filterIntentCategory) return false
+      if (filterNotPitchedLh === 'only' && p.last_contacted_at != null) return false
+      if (filterNotPitchedEm === 'only' && (p as Prospect & { last_contacted_at_em?: string | null }).last_contacted_at_em != null) return false
       return true
     })
   }, [
     prospects,
-    searchName,
-    searchCompany,
-    searchEmail,
+    searchQuery,
     filterCategory,
     filterLeadScore,
     filterStatus,
-    filterLastContactedFrom,
-    filterLastContactedTo,
-    filterNextFollowUpFrom,
-    filterNextFollowUpTo,
+    filterLhUserId,
+    filterIntentCategory,
+    filterNotPitchedLh,
+    filterNotPitchedEm,
   ])
 
   const prospectsGroupedByStage = useMemo(() => {
@@ -257,8 +268,106 @@ export default function ProspectsPage() {
     }
   }
 
+  const fetchLhUsers = async () => {
+    try {
+      const res = await api.get('/users')
+      const list = Array.isArray(res.data) ? res.data : []
+      setLhUsers(list.filter((u: UserOption) => u.role === 'LH'))
+    } catch {
+      setLhUsers([])
+    }
+  }
+
+  const refreshFromApiAndCache = async () => {
+    const [prospectsRes, usersRes] = await Promise.all([
+      api.get('/prospects'),
+      api.get('/users'),
+    ])
+    const pList = Array.isArray(prospectsRes.data) ? prospectsRes.data : []
+    const uList = Array.isArray(usersRes.data) ? usersRes.data : []
+    setProspects(pList)
+    setLhUsers(uList.filter((u: UserOption) => u.role === 'LH'))
+    await Promise.all([
+      setCachedData('prospects_all', pList),
+      setCachedData('users_all', uList),
+      markSynced('prospects'),
+      markSynced('users'),
+    ])
+  }
+
+  const createProspect = async () => {
+    if (!user?.id) return
+    setCreating(true)
+    try {
+      const created = await api.post('/prospects', {
+        user_id: user.id,
+        name: newProspectName.trim() || null,
+        category: newProspectCategory || null,
+        intent_category: newProspectIntentCategory || null,
+        status: 'new',
+      })
+      setNewProspectName('')
+      setNewProspectCategory('')
+      setNewProspectIntentCategory('')
+      const next = [created.data, ...prospects]
+      setProspects(next)
+      await setCachedData('prospects_all', next)
+      await markSynced('prospects')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create prospect')
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const deleteProspect = async (id: string) => {
+    if (!confirm('Delete this prospect?')) return
+    try {
+      await api.delete(`/prospects/${id}`)
+      const next = prospects.filter((p) => p.id !== id)
+      setProspects(next)
+      await setCachedData('prospects_all', next)
+      await markSynced('prospects')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete prospect')
+    }
+  }
+
   useEffect(() => {
-    fetchProspects()
+    let cancelled = false
+    ;(async () => {
+      try {
+        setLoading(true)
+        const [pCached, uCached] = await Promise.all([
+          cacheFirstLoad('prospects', 'prospects_all', async () => (await api.get('/prospects')).data),
+          cacheFirstLoad('users', 'users_all', async () => (await api.get('/users')).data),
+        ])
+        if (cancelled) return
+        setProspects(Array.isArray(pCached.data) ? pCached.data : [])
+        const users = Array.isArray(uCached.data) ? uCached.data : []
+        setLhUsers(users.filter((u: UserOption) => u.role === 'LH'))
+        setError(null)
+        setLoading(false)
+        if (pCached.stale) {
+          const synced = await syncIfStale('prospects', 'prospects_all', async () => (await api.get('/prospects')).data)
+          if (!cancelled && Array.isArray(synced.data)) setProspects(synced.data)
+        }
+        if (uCached.stale) {
+          const syncedUsers = await syncIfStale('users', 'users_all', async () => (await api.get('/users')).data)
+          if (!cancelled && Array.isArray(syncedUsers.data)) {
+            setLhUsers(syncedUsers.data.filter((u: UserOption) => u.role === 'LH'))
+          }
+        }
+      } catch (err: unknown) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to load prospects')
+          setLoading(false)
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   return (
@@ -270,12 +379,42 @@ export default function ProspectsPage() {
         </div>
         <button
           type="button"
-          onClick={fetchProspects}
+          onClick={refreshFromApiAndCache}
           style={{ padding: '10px 20px', background: '#4f46e5', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}
         >
           Refresh
         </button>
       </header>
+
+      <section style={{ background: 'white', borderRadius: '8px', border: '1px solid #e2e8f0', padding: '16px', marginBottom: '20px' }}>
+        <h3 style={{ fontSize: '16px', marginBottom: '12px', color: '#1e293b' }}>Create Prospect</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr auto', gap: '10px' }}>
+          <input
+            type="text"
+            placeholder="Prospect name"
+            value={newProspectName}
+            onChange={(e) => setNewProspectName(e.target.value)}
+            style={{ padding: '10px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '14px' }}
+          />
+          <select value={newProspectCategory} onChange={(e) => setNewProspectCategory(e.target.value)} style={{ padding: '10px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '14px' }}>
+            <option value="">Category</option>
+            <option value="Entrepreneur">Entrepreneur</option>
+            <option value="Subcontractor">Subcontractor</option>
+            <option value="SME">SME</option>
+            <option value="HR">HR</option>
+            <option value="C_Level">C-Level</option>
+          </select>
+          <select value={newProspectIntentCategory} onChange={(e) => setNewProspectIntentCategory(e.target.value)} style={{ padding: '10px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '14px' }}>
+            <option value="">Intent category</option>
+            <option value="Individual">Individual</option>
+            <option value="Business">Business</option>
+            <option value="Both">Both</option>
+          </select>
+          <button type="button" disabled={creating} onClick={createProspect} style={{ padding: '10px 16px', background: '#16a34a', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 600, cursor: 'pointer' }}>
+            {creating ? 'Creating…' : 'Create'}
+          </button>
+        </div>
+      </section>
 
       {loading && <p style={{ color: '#64748b', padding: '20px' }}>Loading prospects...</p>}
       {error && <p style={{ color: '#dc2626', padding: '20px' }}>Error: {error}</p>}
@@ -291,23 +430,9 @@ export default function ProspectsPage() {
           <div className="search-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '16px' }}>
             <input
               type="search"
-              placeholder="Search by name"
-              value={searchName}
-              onChange={(e) => setSearchName(e.target.value)}
-              style={{ padding: '10px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '14px' }}
-            />
-            <input
-              type="search"
-              placeholder="Search by company"
-              value={searchCompany}
-              onChange={(e) => setSearchCompany(e.target.value)}
-              style={{ padding: '10px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '14px' }}
-            />
-            <input
-              type="search"
-              placeholder="Search by email (optional)"
-              value={searchEmail}
-              onChange={(e) => setSearchEmail(e.target.value)}
+              placeholder="Search name/company/email"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
               style={{ padding: '10px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '14px' }}
             />
           </div>
@@ -342,14 +467,26 @@ export default function ProspectsPage() {
                 <option key={s} value={s}>{l}</option>
               ))}
             </select>
-            <span style={{ fontSize: '13px', color: '#64748b' }}>Last Contacted:</span>
-            <input type="date" value={filterLastContactedFrom} onChange={(e) => setFilterLastContactedFrom(e.target.value)} style={{ padding: '10px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '14px' }} />
-            <span style={{ color: '#64748b' }}>–</span>
-            <input type="date" value={filterLastContactedTo} onChange={(e) => setFilterLastContactedTo(e.target.value)} style={{ padding: '10px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '14px' }} />
-            <span style={{ fontSize: '13px', color: '#64748b' }}>Next Follow-up:</span>
-            <input type="date" value={filterNextFollowUpFrom} onChange={(e) => setFilterNextFollowUpFrom(e.target.value)} style={{ padding: '10px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '14px' }} />
-            <span style={{ color: '#64748b' }}>–</span>
-            <input type="date" value={filterNextFollowUpTo} onChange={(e) => setFilterNextFollowUpTo(e.target.value)} style={{ padding: '10px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '14px' }} />
+            <select value={filterLhUserId} onChange={(e) => setFilterLhUserId(e.target.value)} style={{ padding: '10px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '14px', minWidth: '160px' }}>
+              <option value="">All LH users</option>
+              {lhUsers.map((u) => (
+                <option key={u.id} value={u.id}>{u.name || u.email}</option>
+              ))}
+            </select>
+            <select value={filterIntentCategory} onChange={(e) => setFilterIntentCategory(e.target.value)} style={{ padding: '10px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '14px', minWidth: '160px' }}>
+              <option value="">All intent categories</option>
+              <option value="Individual">Individual</option>
+              <option value="Business">Business</option>
+              <option value="Both">Both</option>
+            </select>
+            <select value={filterNotPitchedLh} onChange={(e) => setFilterNotPitchedLh(e.target.value)} style={{ padding: '10px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '14px', minWidth: '180px' }}>
+              <option value="">LH pitch: all</option>
+              <option value="only">LH not pitched</option>
+            </select>
+            <select value={filterNotPitchedEm} onChange={(e) => setFilterNotPitchedEm(e.target.value)} style={{ padding: '10px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '14px', minWidth: '180px' }}>
+              <option value="">EM pitch: all</option>
+              <option value="only">EM not pitched</option>
+            </select>
           </div>
 
           {prospects.length === 0 ? (
@@ -381,6 +518,7 @@ export default function ProspectsPage() {
                         statusStyle={STATUS_STYLE}
                         statusLabels={STATUS_LABELS}
                         onClick={() => router.push(`/prospects/${p.id}`)}
+                        onDelete={() => deleteProspect(p.id)}
                       />
                     ))}
                     {(prospectsGroupedByStage[group.key] ?? []).length === 0 && (

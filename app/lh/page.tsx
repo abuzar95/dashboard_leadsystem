@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import api from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
+import { cacheFirstLoad, syncIfStale, setCachedData, markSynced } from '../lib/indexedDbCache'
 
 interface LHStats {
   totalAssignedProspects: number
@@ -38,26 +39,43 @@ export default function LHDashboardPage() {
 
   const fetchStats = () => {
     setError(null)
-    api.get('/stats/lh').then((r) => setLhStats(r.data)).catch(() => setLhStats(null))
+    Promise.all([
+      api.get('/stats/lh').then((r) => r.data),
+      api.get(`/stats/prospects-by-category${categoryChartMinLeadScore.trim() ? `?minLeadScore=${encodeURIComponent(categoryChartMinLeadScore.trim())}` : ''}`).then((r) => r.data),
+    ])
+      .then(async ([statsData, categoryData]) => {
+        setLhStats(statsData)
+        setCategoryChartData(categoryData)
+        await Promise.all([
+          setCachedData('lh_stats', statsData),
+          setCachedData('lh_category_chart', categoryData),
+          markSynced('dashboard_stats'),
+        ])
+      })
+      .catch(() => setLhStats(null))
   }
 
   useEffect(() => {
     let cancelled = false
-    setLoading(true)
-    api
-      .get('/stats/lh')
-      .then((r) => {
-        if (!cancelled) setLhStats(r.data)
-      })
-      .catch(() => {
-        if (!cancelled) setError('Failed to load LH stats')
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
+    ;(async () => {
+      try {
+        setLoading(true)
+        const cached = await cacheFirstLoad('dashboard_stats', 'lh_stats', async () => (await api.get('/stats/lh')).data)
+        if (cancelled) return
+        setLhStats(cached.data as LHStats)
+        setLoading(false)
+        if (cached.stale) {
+          const synced = await syncIfStale('dashboard_stats', 'lh_stats', async () => (await api.get('/stats/lh')).data)
+          if (!cancelled && synced.data) setLhStats(synced.data as LHStats)
+        }
+      } catch {
+        if (!cancelled) {
+          setError('Failed to load LH stats')
+          setLoading(false)
+        }
+      }
+    })()
+    return () => { cancelled = true }
   }, [])
 
   useEffect(() => {

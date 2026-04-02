@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import api from '../lib/api'
 import TablePagination from '../components/TablePagination'
 import { formatDatePKT } from '../lib/date'
+import { cacheFirstLoad, syncIfStale, setCachedData, markSynced } from '../lib/indexedDbCache'
 
 const NICHES = ['Individual', 'Business', 'Both'] as const
 type Niche = typeof NICHES[number]
@@ -59,8 +60,30 @@ export default function LinkedInProfilesPage() {
     }
   }, [])
 
+  const syncNow = useCallback(async () => {
+    const response = await api.get('/linkedin-profiles')
+    setProfiles(response.data)
+    await Promise.all([setCachedData('linkedin_profiles_all', response.data), markSynced('linkedin_profiles')])
+  }, [])
+
   useEffect(() => {
-    fetchProfiles()
+    let cancelled = false
+    ;(async () => {
+      const result = await cacheFirstLoad('linkedin_profiles', 'linkedin_profiles_all', async () => (await api.get('/linkedin-profiles')).data)
+      if (cancelled) return
+      setProfiles(Array.isArray(result.data) ? result.data : [])
+      setLoading(false)
+      if (result.stale) {
+        const synced = await syncIfStale('linkedin_profiles', 'linkedin_profiles_all', async () => (await api.get('/linkedin-profiles')).data)
+        if (!cancelled && Array.isArray(synced.data)) setProfiles(synced.data)
+      }
+    })().catch((err: unknown) => {
+      if (!cancelled) {
+        setError(err instanceof Error ? err.message : 'Failed to fetch LinkedIn profiles')
+        setLoading(false)
+      }
+    })
+    return () => { cancelled = true }
   }, [fetchProfiles])
 
   const openCreateModal = () => {
@@ -98,6 +121,7 @@ export default function LinkedInProfilesPage() {
       }
       setShowModal(false)
       fetchProfiles()
+      syncNow()
     } catch (err: any) {
       setFormError(err.response?.data?.error || err.message || 'Failed to save profile')
     } finally {
@@ -110,6 +134,7 @@ export default function LinkedInProfilesPage() {
     try {
       await api.delete(`/linkedin-profiles/${profile.id}`)
       fetchProfiles()
+      syncNow()
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to delete profile')
     }
@@ -125,6 +150,7 @@ export default function LinkedInProfilesPage() {
         <button className="btn btn-primary" onClick={openCreateModal}>
           + New Profile
         </button>
+        <button className="btn btn-secondary" onClick={syncNow}>Sync</button>
       </div>
 
       {loading && <p style={{ color: '#64748b' }}>Loading profiles...</p>}

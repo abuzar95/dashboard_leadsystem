@@ -72,6 +72,7 @@ interface LHStats {
   totalLCProspects: number
   totalLNCProspects: number
   todaysTasks: number
+  overdueTasks: number
 }
 
 interface TopSource {
@@ -101,11 +102,7 @@ interface LHUserActivityItem {
   lc: number
   lnc: number
   todaysTasks: number
-}
-
-interface StageConversion {
-  lncToLcToday: number
-  lncToLcAllTime: number
+  overdueTasks: number
 }
 
 interface StageCount {
@@ -137,7 +134,6 @@ export default function DashboardPage() {
   const [categoryChartMinLeadScore, setCategoryChartMinLeadScore] = useState<string>('')
   const [userActivity, setUserActivity] = useState<UserActivityItem[]>([])
   const [lhUserActivity, setLhUserActivity] = useState<LHUserActivityItem[]>([])
-  const [stageConversion, setStageConversion] = useState<StageConversion | null>(null)
   const [prospectsByStage, setProspectsByStage] = useState<ProspectsByStage | null>(null)
   const [statsLoading, setStatsLoading] = useState(true)
   const [lhStatsLoading, setLhStatsLoading] = useState(true)
@@ -145,7 +141,6 @@ export default function DashboardPage() {
   const [categoryChartLoading, setCategoryChartLoading] = useState(true)
   const [userActivityLoading, setUserActivityLoading] = useState(true)
   const [lhUserActivityLoading, setLhUserActivityLoading] = useState(true)
-  const [stageConversionLoading, setStageConversionLoading] = useState(true)
   const [prospectsByStageLoading, setProspectsByStageLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -156,7 +151,6 @@ export default function DashboardPage() {
     setLhStatsLoading(true)
     setSourcesLoading(true)
     setUserActivityLoading(true)
-    setStageConversionLoading(true)
     setProspectsByStageLoading(true)
     const done = () => {
       setLastUpdated(new Date())
@@ -168,7 +162,6 @@ export default function DashboardPage() {
       api.get('/stats/top-sources?limit=3').then((r) => setTopSources(r.data)).catch(() => setTopSources([])).finally(() => setSourcesLoading(false)),
       api.get('/stats/user-activity').then((r) => setUserActivity(r.data)).catch(() => setUserActivity([])).finally(() => setUserActivityLoading(false)),
       api.get('/stats/lh-user-activity').then((r) => setLhUserActivity(r.data)).catch(() => setLhUserActivity([])).finally(() => setLhUserActivityLoading(false)),
-      api.get('/stats/stage-conversion').then((r) => setStageConversion(r.data)).catch(() => setStageConversion(null)).finally(() => setStageConversionLoading(false)),
       api.get('/stats/prospects-by-stage').then((r) => setProspectsByStage(r.data)).catch(() => setProspectsByStage(null)).finally(() => setProspectsByStageLoading(false)),
     ]).then(done)
   }
@@ -194,6 +187,7 @@ export default function DashboardPage() {
   const animLhLC = useAnimatedNumber(lhStats?.totalLCProspects ?? null, lhStatsLoading)
   const animLhLNC = useAnimatedNumber(lhStats?.totalLNCProspects ?? null, lhStatsLoading)
   const animLhTasks = useAnimatedNumber(lhStats?.todaysTasks ?? null, lhStatsLoading)
+  const animLhOverdue = useAnimatedNumber(lhStats?.overdueTasks ?? null, lhStatsLoading)
 
   return (
     <div className="page-content" style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
@@ -286,6 +280,12 @@ export default function DashboardPage() {
               {lhStatsLoading ? <div className="dashboard-skeleton" style={{ height: 32, width: 60 }} /> : (animLhTasks ?? '—')}
             </div>
           </div>
+          <div className="dashboard-stat-card" style={{ ...cardStyle, cursor: 'default' }}>
+            <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '4px' }}>Overdue Tasks</div>
+            <div style={{ fontSize: '28px', fontWeight: 700, color: '#b91c1c', minHeight: 36 }}>
+              {lhStatsLoading ? <div className="dashboard-skeleton" style={{ height: 32, width: 60 }} /> : (animLhOverdue ?? '—')}
+            </div>
+          </div>
         </div>
       </section>
 
@@ -338,8 +338,8 @@ export default function DashboardPage() {
                 <div key={i} style={{ ...cardStyle, padding: '16px' }}>
                   <div className="dashboard-skeleton" style={{ height: 16, width: '60%', marginBottom: 8 }} />
                   <div className="dashboard-skeleton" style={{ height: 12, width: '80%', marginBottom: 12 }} />
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 8 }}>
-                    {[1, 2, 3, 4].map((j) => (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr', gap: 8 }}>
+                    {[1, 2, 3, 4, 5].map((j) => (
                       <div key={j} className="dashboard-skeleton" style={{ height: 40, borderRadius: 6 }} />
                     ))}
                   </div>
@@ -359,31 +359,10 @@ export default function DashboardPage() {
                     <div style={{ textAlign: 'center', minWidth: '60px' }}><div style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase' }}>LC</div><div style={{ fontSize: '20px', fontWeight: 700, color: '#0d9488' }}>{u.lc}</div></div>
                     <div style={{ textAlign: 'center', minWidth: '60px' }}><div style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase' }}>LNC</div><div style={{ fontSize: '20px', fontWeight: 700, color: '#d97706' }}>{u.lnc}</div></div>
                     <div style={{ textAlign: 'center', minWidth: '60px' }}><div style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase' }}>Today&apos;s Tasks</div><div style={{ fontSize: '20px', fontWeight: 700, color: '#dc2626' }}>{u.todaysTasks}</div></div>
+                    <div style={{ textAlign: 'center', minWidth: '60px' }}><div style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase' }}>Overdue</div><div style={{ fontSize: '20px', fontWeight: 700, color: '#b91c1c' }}>{u.overdueTasks}</div></div>
                   </div>
                 </div>
               ))}
-            </div>
-          )}
-        </div>
-
-        <div style={{ marginBottom: '24px' }}>
-          <h3 style={{ fontSize: '15px', fontWeight: 600, marginBottom: '12px', color: '#334155' }}>Stage Conversion</h3>
-          <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '12px' }}>LNC → LC conversions</p>
-          {stageConversionLoading ? (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
-              <div className="dashboard-stat-card" style={cardStyle}><div className="dashboard-skeleton" style={{ height: 14, width: '70%', marginBottom: 12 }} /><div className="dashboard-skeleton" style={{ height: 36, width: 80 }} /></div>
-              <div className="dashboard-stat-card" style={cardStyle}><div className="dashboard-skeleton" style={{ height: 14, width: '70%', marginBottom: 12 }} /><div className="dashboard-skeleton" style={{ height: 36, width: 80 }} /></div>
-            </div>
-          ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
-              <div className="dashboard-stat-card" style={{ ...cardStyle, cursor: 'default' }}>
-                <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '4px' }}>LNC → LC Today</div>
-                <div style={{ fontSize: '28px', fontWeight: 700, color: '#059669' }}>{stageConversion?.lncToLcToday ?? '—'}</div>
-              </div>
-              <div className="dashboard-stat-card" style={{ ...cardStyle, cursor: 'default' }}>
-                <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '4px' }}>LNC → LC All Time</div>
-                <div style={{ fontSize: '28px', fontWeight: 700, color: '#0d9488' }}>{stageConversion?.lncToLcAllTime ?? '—'}</div>
-              </div>
             </div>
           )}
         </div>

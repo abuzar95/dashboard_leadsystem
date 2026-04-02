@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import api from '../lib/api'
 import TablePagination from '../components/TablePagination'
 import { formatDatePKT } from '../lib/date'
+import { cacheFirstLoad, syncIfStale, setCachedData, markSynced } from '../lib/indexedDbCache'
 
 interface Skill {
   id: string
@@ -48,8 +49,30 @@ export default function SkillsPage() {
     }
   }, [])
 
+  const syncNow = useCallback(async () => {
+    const response = await api.get('/skills')
+    setSkills(response.data)
+    await Promise.all([setCachedData('skills_all', response.data), markSynced('skills')])
+  }, [])
+
   useEffect(() => {
-    fetchSkills()
+    let cancelled = false
+    ;(async () => {
+      const result = await cacheFirstLoad('skills', 'skills_all', async () => (await api.get('/skills')).data)
+      if (cancelled) return
+      setSkills(Array.isArray(result.data) ? result.data : [])
+      setLoading(false)
+      if (result.stale) {
+        const synced = await syncIfStale('skills', 'skills_all', async () => (await api.get('/skills')).data)
+        if (!cancelled && Array.isArray(synced.data)) setSkills(synced.data)
+      }
+    })().catch((err: unknown) => {
+      if (!cancelled) {
+        setError(err instanceof Error ? err.message : 'Failed to fetch skills')
+        setLoading(false)
+      }
+    })
+    return () => { cancelled = true }
   }, [fetchSkills])
 
   const openCreateModal = () => {
@@ -85,6 +108,7 @@ export default function SkillsPage() {
       }
       setShowModal(false)
       fetchSkills()
+      syncNow()
     } catch (err: any) {
       setFormError(err.response?.data?.error || err.message || 'Failed to save skill')
     } finally {
@@ -97,6 +121,7 @@ export default function SkillsPage() {
     try {
       await api.delete(`/skills/${skill.id}`)
       fetchSkills()
+      syncNow()
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to delete skill')
     }
@@ -112,6 +137,7 @@ export default function SkillsPage() {
         <button className="btn btn-primary" onClick={openCreateModal}>
           + New Skill
         </button>
+        <button className="btn btn-secondary" onClick={syncNow}>Sync</button>
       </div>
 
       {loading && <p style={{ color: '#64748b' }}>Loading skills...</p>}

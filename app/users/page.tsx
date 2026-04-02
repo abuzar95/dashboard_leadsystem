@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import api from '../lib/api'
 import TablePagination from '../components/TablePagination'
 import { formatDatePKT } from '../lib/date'
+import { cacheFirstLoad, syncIfStale, setCachedData, markSynced } from '../lib/indexedDbCache'
 
 const ROLES = ['admin', 'DC_R', 'LH', 'EM'] as const
 type Role = typeof ROLES[number]
@@ -92,9 +93,47 @@ export default function UsersPage() {
     }
   }, [])
 
+  const syncNow = useCallback(async () => {
+    const [usersRes, profilesRes] = await Promise.all([
+      api.get('/users'),
+      api.get('/linkedin-profiles'),
+    ])
+    setUsers(usersRes.data)
+    setLinkedinProfiles(profilesRes.data)
+    await Promise.all([
+      setCachedData('users_all', usersRes.data),
+      setCachedData('linkedin_profiles_all', profilesRes.data),
+      markSynced('users'),
+      markSynced('linkedin_profiles'),
+    ])
+  }, [])
+
   useEffect(() => {
-    fetchUsers()
-    fetchLinkedinProfiles()
+    let cancelled = false
+    ;(async () => {
+      const [u, p] = await Promise.all([
+        cacheFirstLoad('users', 'users_all', async () => (await api.get('/users')).data),
+        cacheFirstLoad('linkedin_profiles', 'linkedin_profiles_all', async () => (await api.get('/linkedin-profiles')).data),
+      ])
+      if (cancelled) return
+      setUsers(Array.isArray(u.data) ? u.data : [])
+      setLinkedinProfiles(Array.isArray(p.data) ? p.data : [])
+      setLoading(false)
+      if (u.stale) {
+        const synced = await syncIfStale('users', 'users_all', async () => (await api.get('/users')).data)
+        if (!cancelled && Array.isArray(synced.data)) setUsers(synced.data)
+      }
+      if (p.stale) {
+        const syncedProfiles = await syncIfStale('linkedin_profiles', 'linkedin_profiles_all', async () => (await api.get('/linkedin-profiles')).data)
+        if (!cancelled && Array.isArray(syncedProfiles.data)) setLinkedinProfiles(syncedProfiles.data)
+      }
+    })().catch((err: unknown) => {
+      if (!cancelled) {
+        setError(err instanceof Error ? err.message : 'Failed to load users')
+        setLoading(false)
+      }
+    })
+    return () => { cancelled = true }
   }, [fetchUsers, fetchLinkedinProfiles])
 
   const openCreateModal = () => {
@@ -163,6 +202,7 @@ export default function UsersPage() {
       }
       setShowModal(false)
       fetchUsers()
+      syncNow()
     } catch (err: unknown) {
       const data = err && typeof err === 'object' && 'response' in err
         ? (err as { response?: { data?: { error?: string } } }).response?.data
@@ -178,6 +218,7 @@ export default function UsersPage() {
     try {
       await api.delete(`/users/${user.id}`)
       fetchUsers()
+      syncNow()
     } catch (err: unknown) {
       const data = err && typeof err === 'object' && 'response' in err
         ? (err as { response?: { data?: { error?: string } } }).response?.data
@@ -195,6 +236,9 @@ export default function UsersPage() {
         </div>
         <button className="btn btn-primary" onClick={openCreateModal}>
           + New User
+        </button>
+        <button className="btn btn-secondary" onClick={syncNow}>
+          Sync
         </button>
       </div>
 
