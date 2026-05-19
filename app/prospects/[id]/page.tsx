@@ -5,7 +5,68 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import api from '../../lib/api'
 import { formatDatePKT } from '../../lib/date'
+import {
+  getLhAssignmentValidationError,
+  lhIntentCategoryMatches,
+} from '../../lib/prospectLh'
 import { useAuth } from '../../context/AuthContext'
+import { isAxiosError } from 'axios'
+
+const PROSPECT_UPDATE_KEYS = [
+  'category',
+  'name',
+  'email',
+  'company_name',
+  'website_link',
+  'sources',
+  'intent_skills',
+  'intent_category',
+  'intent_proof_link',
+  'intent_date',
+  'linkedin_connection',
+  'status',
+  'pitch_description',
+  'pitched_source',
+  'lh_user_id',
+  'em_user_id',
+  'linkedin_profile_id',
+  'about_prospect',
+  'last_contacted_at',
+  'next_follow_up_date',
+  'campaign_name',
+  'campaign_added_date',
+  'priority',
+  'lead_score',
+  'linkedin_url',
+  'data_refined_date',
+  'pitch_date',
+  'pitch_response',
+  'job_title',
+  'company_size',
+  'location',
+  'last_contacted_at_em',
+  'lead_score_em',
+  'pitched_description_em',
+  'next_follow_up_em',
+  'response_em',
+] as const
+
+function buildProspectUpdatePayload(form: Record<string, unknown>): Record<string, unknown> {
+  const payload: Record<string, unknown> = {}
+  for (const key of PROSPECT_UPDATE_KEYS) {
+    if (key in form) payload[key] = form[key]
+  }
+  return payload
+}
+
+function getApiErrorMessage(err: unknown, fallback: string): string {
+  if (isAxiosError(err)) {
+    const data = err.response?.data as { error?: string } | undefined
+    if (typeof data?.error === 'string' && data.error.trim()) return data.error.trim()
+  }
+  if (err instanceof Error && err.message.trim()) return err.message.trim()
+  return fallback
+}
 
 const STATUS_STYLE: Record<string, { bg: string; text: string }> = {
   new: { bg: '#e3f2fd', text: '#1565c0' },
@@ -126,7 +187,8 @@ export default function ProspectDetailPage() {
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const isAdmin = user?.role === 'admin'
 
   useEffect(() => {
@@ -138,7 +200,11 @@ export default function ProspectDetailPage() {
         setForm(r.data)
       })
       .catch((err) => {
-        setError(err.response?.status === 404 ? 'Prospect not found' : err.message || 'Failed to load prospect')
+        setLoadError(
+          isAxiosError(err) && err.response?.status === 404
+            ? 'Prospect not found'
+            : getApiErrorMessage(err, 'Failed to load prospect')
+        )
       })
       .finally(() => setLoading(false))
   }, [id])
@@ -160,15 +226,33 @@ export default function ProspectDetailPage() {
   const saveChanges = async () => {
     if (!prospect) return
     setSaving(true)
-    setError(null)
+    setSaveError(null)
+
+    const payload = buildProspectUpdatePayload(form)
+    const status = (payload.status as string | undefined) ?? prospect.status
+    if (status !== 'data_refined') {
+      payload.lh_user_id = null
+    }
+
+    const lhValidationError = getLhAssignmentValidationError(
+      (payload.intent_category as string | null | undefined) ?? prospect.intent_category,
+      (payload.lh_user_id as string | null | undefined) ?? null,
+      lhUsers
+    )
+    if (lhValidationError) {
+      setSaveError(lhValidationError)
+      setSaving(false)
+      return
+    }
+
     try {
-      const payload = { ...form }
       const res = await api.put(`/prospects/${prospect.id}`, payload)
       setProspect(res.data)
       setForm(res.data)
       setEditing(false)
+      setSaveError(null)
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to update prospect')
+      setSaveError(getApiErrorMessage(err, 'Failed to update prospect. Please try again.'))
     } finally {
       setSaving(false)
     }
@@ -182,10 +266,10 @@ export default function ProspectDetailPage() {
     )
   }
 
-  if (error || !prospect) {
+  if (loadError || !prospect) {
     return (
       <div className="page-content" style={{ padding: '20px', maxWidth: '900px', margin: '0 auto' }}>
-        <p style={{ color: '#dc2626', padding: '20px' }}>{error || 'Prospect not found'}</p>
+        <p style={{ color: '#dc2626', padding: '20px' }}>{loadError || 'Prospect not found'}</p>
         <Link href="/prospects" style={{ color: '#4f46e5', textDecoration: 'underline' }}>
           ← Back to Prospects
         </Link>
@@ -195,10 +279,10 @@ export default function ProspectDetailPage() {
 
   const editable = editing && isAdmin
   const active: ProspectDetail = editable ? (form as unknown as ProspectDetail) : prospect
-  const eligibleLhUsers = lhUsers.filter((u) => {
-    const niche = u.linkedin_profile?.niche
-    return !active.intent_category || niche === active.intent_category
-  })
+  const canAssignLh = active.status === 'data_refined'
+  const eligibleLhUsers = lhUsers.filter((u) =>
+    lhIntentCategoryMatches(u.linkedin_profile?.niche, active.intent_category)
+  )
 
   const statusStyle = STATUS_STYLE[active.status] || { bg: '#f1f5f9', text: '#475569' }
 
@@ -219,13 +303,28 @@ export default function ProspectDetailPage() {
           ← Back to Prospects
         </Link>
         {isAdmin && !editing && (
-          <button type="button" onClick={() => setEditing(true)} style={{ padding: '8px 14px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer' }}>
+          <button
+            type="button"
+            onClick={() => {
+              setSaveError(null)
+              setEditing(true)
+            }}
+            style={{ padding: '8px 14px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer' }}
+          >
             Edit
           </button>
         )}
         {isAdmin && editing && (
           <>
-            <button type="button" onClick={() => { setEditing(false); setForm(prospect as unknown as Record<string, unknown>) }} style={{ padding: '8px 14px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer' }}>
+            <button
+              type="button"
+              onClick={() => {
+                setEditing(false)
+                setSaveError(null)
+                setForm(prospect as unknown as Record<string, unknown>)
+              }}
+              style={{ padding: '8px 14px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer' }}
+            >
               Cancel
             </button>
             <button type="button" disabled={saving} onClick={saveChanges} style={{ padding: '8px 14px', borderRadius: '6px', border: 'none', background: '#4f46e5', color: '#fff', cursor: 'pointer' }}>
@@ -234,6 +333,24 @@ export default function ProspectDetailPage() {
           </>
         )}
       </header>
+
+      {saveError && editing && (
+        <div
+          role="alert"
+          style={{
+            marginBottom: '16px',
+            padding: '12px 16px',
+            borderRadius: '8px',
+            background: '#fef2f2',
+            border: '1px solid #fecaca',
+            color: '#b91c1c',
+            fontSize: '14px',
+            lineHeight: 1.5,
+          }}
+        >
+          {saveError}
+        </div>
+      )}
 
       <div style={{ ...cardStyle, marginBottom: '24px' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px', marginBottom: '20px', paddingBottom: '20px', borderBottom: '1px solid #f1f5f9' }}>
@@ -310,7 +427,14 @@ export default function ProspectDetailPage() {
           <h2 style={{ fontSize: '15px', fontWeight: 600, color: '#64748b', marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Intent & Engagement</h2>
           <DetailRow label="Intent Category" value={active.intent_category?.replace(/_/g, ' ')} />
           {editable && (
-            <select value={(active.intent_category || '') as string} onChange={(e) => setField('intent_category', e.target.value || null)} style={{ width: '100%', marginBottom: 10 }}>
+            <select
+              value={(active.intent_category || '') as string}
+              onChange={(e) => {
+                setSaveError(null)
+                setField('intent_category', e.target.value || null)
+              }}
+              style={{ width: '100%', marginBottom: 10 }}
+            >
               <option value="">Select intent category</option>
               <option value="Individual">Individual</option>
               <option value="Business">Business</option>
@@ -381,20 +505,53 @@ export default function ProspectDetailPage() {
           <h2 style={{ fontSize: '15px', fontWeight: 600, color: '#64748b', marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Assignment</h2>
           <DetailRow label="Captured By (DC&R)" value={active.user?.name || active.user?.email || '—'} />
           <DetailRow label="Assigned LH" value={active.lh_user?.name || active.lh_user?.email || '—'} />
-          {editable && (
-            <select value={(active.lh_user_id || '') as string} onChange={(e) => setField('lh_user_id', e.target.value || null)} style={{ width: '100%', marginBottom: 10 }}>
-              <option value="">Unassigned</option>
-              {eligibleLhUsers.map((u) => (
-                <option key={u.id} value={u.id}>{u.name || u.email}</option>
-              ))}
-            </select>
+          {editable && canAssignLh && (
+            <>
+              {!active.intent_category && (
+                <p style={{ fontSize: '13px', color: '#b45309', marginBottom: 8 }}>
+                  Set intent category before assigning an LH user.
+                </p>
+              )}
+              <select
+                value={(active.lh_user_id || '') as string}
+                onChange={(e) => {
+                  setSaveError(null)
+                  setField('lh_user_id', e.target.value || null)
+                }}
+                style={{ width: '100%', marginBottom: 10 }}
+              >
+                <option value="">Unassigned</option>
+                {eligibleLhUsers.map((u) => (
+                  <option key={u.id} value={u.id}>{u.name || u.email}</option>
+                ))}
+              </select>
+              {active.intent_category && eligibleLhUsers.length === 0 && (
+                <p style={{ fontSize: '13px', color: '#b45309', marginBottom: 8 }}>
+                  No LH users match intent category &quot;{active.intent_category}&quot; (including Both rules).
+                </p>
+              )}
+            </>
+          )}
+          {editable && !canAssignLh && (
+            <p style={{ fontSize: '13px', color: '#64748b', marginBottom: 8 }}>
+              LH assignment is only available when status is Data Refined. Change status to Data Refined to assign or change LH.
+            </p>
           )}
           <DetailRow label="Assigned EM" value={active.em_user?.name || active.em_user?.email || '—'} />
           <DetailRow label="LinkedIn Profile" value={active.linkedin_profile?.name || '—'} />
           {active.campaign_name && <DetailRow label="Campaign" value={active.campaign_name} />}
           {editable && (
             <>
-              <select value={(active.status || 'new') as string} onChange={(e) => setField('status', e.target.value)} style={{ width: '100%', marginBottom: 8 }}>
+              <select
+                value={(active.status || 'new') as string}
+                onChange={(e) => {
+                  const nextStatus = e.target.value
+                  setSaveError(null)
+                  setField('status', nextStatus)
+                  if (nextStatus !== 'data_refined') setField('lh_user_id', null)
+                }}
+                style={{ width: '100%', marginBottom: 8 }}
+              >
                 {Object.entries(STATUS_LABELS).map(([s, l]) => <option key={s} value={s}>{l}</option>)}
               </select>
               <input value={(active.campaign_name || '') as string} onChange={(e) => setField('campaign_name', e.target.value || null)} placeholder="Campaign name" style={{ width: '100%' }} />
