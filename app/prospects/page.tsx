@@ -64,6 +64,13 @@ interface UserOption {
   role: string
 }
 
+function splitUsersByRole(users: UserOption[]) {
+  return {
+    lhUsers: users.filter((u) => u.role === 'LH'),
+    dcrUsers: users.filter((u) => u.role === 'DC_R'),
+  }
+}
+
 const STAGE_GROUPS = [
   { key: 'new_refined', label: 'New & Data Refined', statuses: ['new', 'data_refined'] },
   { key: 'lnc', label: 'LNC (incl. B-LNC)', statuses: ['LNC', 'B_LNC'] },
@@ -190,12 +197,14 @@ export default function ProspectsPage() {
   const router = useRouter()
   const [prospects, setProspects] = useState<Prospect[]>([])
   const [lhUsers, setLhUsers] = useState<UserOption[]>([])
+  const [dcrUsers, setDcrUsers] = useState<UserOption[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [filterCategory, setFilterCategory] = useState('')
   const [filterLeadScore, setFilterLeadScore] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
+  const [filterDcrUserId, setFilterDcrUserId] = useState('')
   const [filterLhUserId, setFilterLhUserId] = useState('')
   const [filterIntentCategory, setFilterIntentCategory] = useState('')
   const [filterNotPitchedLh, setFilterNotPitchedLh] = useState('')
@@ -227,7 +236,9 @@ export default function ProspectsPage() {
         if (Number.isNaN(val) || ls == null || ls < val) return false
       }
       if (filterStatus && p.status !== filterStatus) return false
-      if (filterLhUserId && p.lh_user_id !== filterLhUserId) return false
+      if (filterDcrUserId && p.user_id !== filterDcrUserId) return false
+      if (filterLhUserId === 'unassigned' && p.lh_user_id != null) return false
+      if (filterLhUserId && filterLhUserId !== 'unassigned' && p.lh_user_id !== filterLhUserId) return false
       if (filterIntentCategory && p.intent_category !== filterIntentCategory) return false
       if (filterNotPitchedLh === 'only' && p.last_contacted_at != null) return false
       if (filterNotPitchedEm === 'only' && (p as Prospect & { last_contacted_at_em?: string | null }).last_contacted_at_em != null) return false
@@ -239,6 +250,7 @@ export default function ProspectsPage() {
     filterCategory,
     filterLeadScore,
     filterStatus,
+    filterDcrUserId,
     filterLhUserId,
     filterIntentCategory,
     filterNotPitchedLh,
@@ -268,16 +280,6 @@ export default function ProspectsPage() {
     }
   }
 
-  const fetchLhUsers = async () => {
-    try {
-      const res = await api.get('/users')
-      const list = Array.isArray(res.data) ? res.data : []
-      setLhUsers(list.filter((u: UserOption) => u.role === 'LH'))
-    } catch {
-      setLhUsers([])
-    }
-  }
-
   const refreshFromApiAndCache = async () => {
     const [prospectsRes, usersRes] = await Promise.all([
       api.get('/prospects'),
@@ -285,8 +287,10 @@ export default function ProspectsPage() {
     ])
     const pList = Array.isArray(prospectsRes.data) ? prospectsRes.data : []
     const uList = Array.isArray(usersRes.data) ? usersRes.data : []
+    const { lhUsers: lh, dcrUsers: dcr } = splitUsersByRole(uList)
     setProspects(pList)
-    setLhUsers(uList.filter((u: UserOption) => u.role === 'LH'))
+    setLhUsers(lh)
+    setDcrUsers(dcr)
     await Promise.all([
       setCachedData('prospects_all', pList),
       setCachedData('users_all', uList),
@@ -345,7 +349,9 @@ export default function ProspectsPage() {
         if (cancelled) return
         setProspects(Array.isArray(pCached.data) ? pCached.data : [])
         const users = Array.isArray(uCached.data) ? uCached.data : []
-        setLhUsers(users.filter((u: UserOption) => u.role === 'LH'))
+        const { lhUsers: lh, dcrUsers: dcr } = splitUsersByRole(users)
+        setLhUsers(lh)
+        setDcrUsers(dcr)
         setError(null)
         setLoading(false)
         if (pCached.stale) {
@@ -355,7 +361,9 @@ export default function ProspectsPage() {
         if (uCached.stale) {
           const syncedUsers = await syncIfStale('users', 'users_all', async () => (await api.get('/users')).data)
           if (!cancelled && Array.isArray(syncedUsers.data)) {
-            setLhUsers(syncedUsers.data.filter((u: UserOption) => u.role === 'LH'))
+            const { lhUsers: lh, dcrUsers: dcr } = splitUsersByRole(syncedUsers.data)
+            setLhUsers(lh)
+            setDcrUsers(dcr)
           }
         }
       } catch (err: unknown) {
@@ -467,8 +475,23 @@ export default function ProspectsPage() {
                 <option key={s} value={s}>{l}</option>
               ))}
             </select>
-            <select value={filterLhUserId} onChange={(e) => setFilterLhUserId(e.target.value)} style={{ padding: '10px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '14px', minWidth: '160px' }}>
-              <option value="">All LH users</option>
+            <select
+              value={filterDcrUserId}
+              onChange={(e) => setFilterDcrUserId(e.target.value)}
+              style={{ padding: '10px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '14px', minWidth: '180px' }}
+            >
+              <option value="">Captured by: all DC&R</option>
+              {dcrUsers.map((u) => (
+                <option key={u.id} value={u.id}>{u.name || u.email}</option>
+              ))}
+            </select>
+            <select
+              value={filterLhUserId}
+              onChange={(e) => setFilterLhUserId(e.target.value)}
+              style={{ padding: '10px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '14px', minWidth: '180px' }}
+            >
+              <option value="">Assigned LH: all</option>
+              <option value="unassigned">Assigned LH: unassigned</option>
               {lhUsers.map((u) => (
                 <option key={u.id} value={u.id}>{u.name || u.email}</option>
               ))}
